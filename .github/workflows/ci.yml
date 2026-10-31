@@ -22,7 +22,7 @@ jobs:
         run: go vet ./...
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.4.0
+          version: v2.12.2  # built with Go 1.26; v2.4.0 (Go 1.25) cannot lint a go 1.26 module
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: test
