@@ -67,6 +67,7 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 		Limiter: limiter,
 		Auth:    verifier,
 	})
+	RegisterStream(mux)
 
 	adminUsecase := NewAdmin(s.db)
 	RegisterAdmin(mux, adminUsecase)
