@@ -1,0 +1,24 @@
+version: "2"
+sql:
+  # Schemas come from the goose migrations, so the database and sqlc read the same DDL.
+  # device, queue and stream keep their state in Valkey and have no tables.
+  - engine: "postgresql"
+    schema: ["db/migrations/00001_queue_schema.sql", "db/migrations/00003_checkpoint.sql"]
+    queries: "db/queries/controller/"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/controller/infrastructure/postgres/sqlcgen"
+        sql_package: "database/sql"
+        emit_db_tags: true
+        emit_interface: true
+  - engine: "postgresql"
+    schema: ["db/migrations/00001_queue_schema.sql", "db/migrations/00002_event_queue_config.sql"]
+    queries: "db/queries/admin/"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/admin/infrastructure/postgres/sqlcgen"
+        sql_package: "database/sql"
+        emit_db_tags: true
+        emit_interface: true

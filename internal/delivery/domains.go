@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
+	controllerentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/controller/domain/entity"
 	deviceentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/device/domain/entity"
 	queueentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/attest"
@@ -31,6 +32,9 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 	}
 	if cfg.Attestor != "sandbox" {
 		return fmt.Errorf("unknown ATTESTOR %q; only sandbox exists until real attestation (D-6)", cfg.Attestor)
+	}
+	if cfg.RateWindow < cfg.MissWindow {
+		return fmt.Errorf("RATE_WINDOW (%s) must not be shorter than MISS_WINDOW (%s)", cfg.RateWindow, cfg.MissWindow)
 	}
 	if cfg.CoreJWKSURL == "" {
 		slog.Warn("CORE_JWKS_URL empty: joins with an access token are refused until core publishes its keys")
@@ -64,6 +68,22 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 		Auth:    verifier,
 	})
 
+	adminUsecase := NewAdmin(s.db)
+	RegisterAdmin(mux, adminUsecase)
+
+	controllerConfig := controllerentity.DefaultConfig()
+	controllerConfig.TickEvery = cfg.Tick
+	controllerConfig.PurgeGrace = cfg.PurgeGrace
+	controllerConfig.HistWindow = cfg.RateWindow
+	controllerConfig.PriorOrderTime = cfg.RatePrior
+	controllerConfig.InviteWindow = cfg.MissWindow
+	controller := NewController(ControllerDeps{
+		Config:   controllerConfig,
+		DB:       s.db,
+		Valkey:   s.valkey,
+		Settings: adminUsecase,
+	})
+	s.background = append(s.background, controller.Run)
 	return nil
 }
 
