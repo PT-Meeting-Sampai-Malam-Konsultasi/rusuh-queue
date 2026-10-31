@@ -9,9 +9,12 @@ import (
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
 	deviceentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/device/domain/entity"
+	queueentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/attest"
+	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/clientip"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/ratelimit"
+	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/remotejwks"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/token"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/turnstile"
 )
@@ -29,7 +32,11 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 	if cfg.Attestor != "sandbox" {
 		return fmt.Errorf("unknown ATTESTOR %q; only sandbox exists until real attestation (D-6)", cfg.Attestor)
 	}
+	if cfg.CoreJWKSURL == "" {
+		slog.Warn("CORE_JWKS_URL empty: joins with an access token are refused until core publishes its keys")
+	}
 	limiter := ratelimit.New(s.valkey)
+	verifier := auth.New(keys, remotejwks.New(cfg.CoreJWKSURL))
 
 	RegisterDevice(mux, DeviceDeps{
 		Config: deviceentity.Config{
@@ -42,6 +49,19 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 		Limiter:  limiter,
 		Signer:   keys,
 		ClientIP: ipResolver,
+	})
+
+	RegisterQueue(mux, QueueDeps{
+		Config: queueentity.Config{
+			JoinPerDevice:  ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
+			ClaimPerDevice: ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
+			OrderWindow:    cfg.OrderWindow,
+			MissWindow:     cfg.MissWindow,
+		},
+		Valkey:  s.valkey,
+		Signer:  keys,
+		Limiter: limiter,
+		Auth:    verifier,
 	})
 
 	return nil
