@@ -1,0 +1,7 @@
+# Types only: handlers are hand-written in internal/<domain>/infrastructure/http.
+package: api
+output: api/types.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true

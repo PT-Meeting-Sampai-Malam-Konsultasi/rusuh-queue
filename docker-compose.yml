@@ -1,0 +1,67 @@
+# Local stack: PostgreSQL 16 + Valkey 8 (+ the app, + an OpenAPI mock for web/mobile).
+#   make deps-up       # db + valkey only, run the app with `make run`
+#   make docker-up     # everything
+#   make mock-api      # Prism mock of api/openapi.yaml on :4010
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ENV=development
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/rusuh?sslmode=disable
+      - VALKEY_ADDR=valkey:6379
+      - LOG_FORMAT=json
+      - TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+      - CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rusuh
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rusuh"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  # Same durability model as ElastiCache for Valkey: no AOF, no RDB snapshots.
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "no", "--save", "", "--maxmemory", "768mb", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  # OpenAPI mock so Web 1 and Mobile can build against the contract before the service exists.
+  mock-api:
+    image: stoplight/prism:4
+    profiles: ["mock"]
+    command: ["mock", "-h", "0.0.0.0", "/spec/openapi.yaml"]
+    ports:
+      - "4010:4010"
+    volumes:
+      - ${OPENAPI_DIR:-../rusuh-documentation/api}:/spec:ro
+
+volumes:
+  pgdata:
