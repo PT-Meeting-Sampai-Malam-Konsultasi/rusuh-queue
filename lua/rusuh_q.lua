@@ -550,9 +550,65 @@ local function lottery_v1(keys, args)
   return {'OK', drawn, server.call('SCARD', pre)}
 end
 
+-- rusuh_release_v1: apply one booking event from core (FR-16, FR-23, ADR-0013).
+-- held(n): the lease's unused units go back to unreserved, n move to held, and the
+--   slot is kept until the payment deadline + grace (purge leaves held leases alone).
+-- paid(n): the n held units are sold. expired(n): they go back to unreserved.
+-- A paid or expired event for a lease that is not held yet (its held event is late)
+-- applies the hold first, so any delivery order ends with the same counters. A held
+-- lease that the purge already ended takes its n units back from unreserved.
+-- Idempotent on the event id (q:{evt}:done). Not fenced: any task's consumer may apply it.
+-- KEYS: cfg, unreserved, resv, held, active, leases, done
+-- ARGV: event id, type (held | paid | expired), slot, units, payment deadline ms (0 unless held), hold grace ms
+-- Returns APPLIED | DUPLICATE | UNKNOWN_SLOT | NO_EVENT.
+local function release_v1(keys, args)
+  local cfg, unres, resv, held, active, leases, done = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6], keys[7]
+  if server.call('EXISTS', cfg) == 0 then return 'NO_EVENT' end
+  if server.call('HSETNX', done, args[1], args[2]) == 0 then return 'DUPLICATE' end
+  ensure_expiry(done, cfg)
+
+  local kind, slot = args[2], args[3]
+  local raw = server.call('HGET', leases, slot)
+  local l = raw and parse_lease(raw)
+  if not l then return 'UNKNOWN_SLOT' end
+  local n = math.min(int(args[4]), l.units)
+  local function decr(key, by)
+    if int(server.call('DECRBY', key, by)) < 0 then server.call('SET', key, 0, 'KEEPTTL') end
+  end
+
+  if l.status ~= 'held' then
+    if l.status == 'reserved' then
+      decr(resv, l.units)
+      server.call('INCRBY', unres, l.units - n)
+    else
+      decr(unres, n)
+    end
+    server.call('INCRBY', held, n)
+    ensure_expiry(held, cfg)
+    l.units, l.status = n, 'held'
+  end
+
+  if kind == 'held' then
+    l.ends = int(args[5]) + int(args[6])
+    server.call('HSET', leases, slot, lease_value(l))
+    server.call('ZADD', active, l.ends, slot)
+    return 'APPLIED'
+  end
+
+  decr(held, l.units)
+  if kind == 'expired' then server.call('INCRBY', unres, l.units) end
+  server.call('HDEL', leases, slot)
+  server.call('ZREM', active, slot)
+  if server.call('HGET', leases, 'd:' .. l.device) == slot then
+    server.call('HDEL', leases, 'd:' .. l.device)
+  end
+  return 'APPLIED'
+end
+
 server.register_function('rusuh_lead_v1', lead_v1)
 server.register_function('rusuh_resign_v1', resign_v1)
 server.register_function('rusuh_purge_v1', purge_v1)
 server.register_function('rusuh_tick_v1', tick_v1)
 server.register_function('rusuh_claim_v1', claim_v1)
 server.register_function('rusuh_lottery_v1', lottery_v1)
+server.register_function('rusuh_release_v1', release_v1)

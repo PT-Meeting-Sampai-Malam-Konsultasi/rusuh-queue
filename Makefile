@@ -38,7 +38,7 @@ mock:
 	go generate ./internal/...
 
 sqlc:
-	sqlc generate
+	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
 
 gen-api:
 	$(OAPI_CODEGEN) -config api/oapi-codegen.yaml $(OPENAPI_SPEC)

@@ -165,3 +165,61 @@ func Int(t *testing.T, client valkey.Client, key string) int64 {
 	}
 	return n
 }
+
+// Admit joins a new device, ticks it in and claims, and returns its slot id
+// (the one Claim uses) and reserved units.
+func Admit(t *testing.T, client valkey.Client, k qkeys.Event, device string, orderWindow time.Duration) (string, int64) {
+	t.Helper()
+	ctx := context.Background()
+	vals, err := valkeyx.FCall(ctx, client, "rusuh_join_v1", []string{k.Cfg, k.Seq, k.Devs, k.Pre, k.Accts, k.Served, k.Hist},
+		device, "", "60000").ToArray()
+	if err != nil {
+		t.Fatalf("join %s: %v", device, err)
+	}
+	seq, _ := vals[1].AsInt64()
+	Tick(t, client, k, TickArgs{})
+	status, units := Claim(t, client, k, device, seq, orderWindow)
+	if status != "OK" {
+		t.Fatalf("claim %s: %s", device, status)
+	}
+	return "s_" + device + "_" + strconv.FormatInt(seq, 10), units
+}
+
+// BookingEvent is a stream:booking entry as core's outbox relay writes it (booking.v1).
+type BookingEvent struct {
+	ID              string    `json:"id"`
+	Type            string    `json:"type"`
+	EventID         string    `json:"eventId"`
+	SlotID          string    `json:"slotId"`
+	DeviceID        string    `json:"deviceId"`
+	BookingID       string    `json:"bookingId"`
+	Units           int       `json:"units"`
+	PaymentDeadline time.Time `json:"paymentDeadline,omitzero"`
+	OccurredAt      time.Time `json:"occurredAt"`
+	V               int       `json:"v"`
+}
+
+// PublishBooking appends one event to stream:booking, the way core's relay does.
+func PublishBooking(t *testing.T, client valkey.Client, ev BookingEvent) string {
+	t.Helper()
+	ev.V = 1
+	if ev.BookingID == "" {
+		ev.BookingID = "b_" + ev.ID
+	}
+	if ev.OccurredAt.IsZero() {
+		ev.OccurredAt = time.Now().UTC()
+	}
+	b, _ := json.Marshal(ev)
+	return PublishRaw(t, client, ev.Type, string(b))
+}
+
+// PublishRaw appends a payload as is, for poison-message tests.
+func PublishRaw(t *testing.T, client valkey.Client, typ, payload string) string {
+	t.Helper()
+	id, err := client.Do(context.Background(), client.B().Xadd().Key("stream:booking").Id("*").FieldValue().
+		FieldValue("type", typ).FieldValue("payload", payload).Build()).ToString()
+	if err != nil {
+		t.Fatalf("xadd stream:booking: %v", err)
+	}
+	return id
+}

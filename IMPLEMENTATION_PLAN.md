@@ -414,7 +414,8 @@ reasons in the 14 advance-rule cases) and HTTP tests (MISSED on me, rejoin seq, 
 
 ### M4 — Consumer, release, reconcile (Thu 5 – Fri 6 Nov)
 
-- [ ] Consumer group, `rusuh_release_v1`, `XAUTOCLAIM`, dead-letter.
+- [x] Consumer group, `rusuh_release_v1`, retry of idle entries (`XPENDING` + `XCLAIM`, which also gives the delivery
+      count), dead-letter (1 Nov).
 - [ ] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard; TTL freeze handling (D-11).
 - [ ] `cmd/fakecore` for tests until `core` is ready: publishes `stream:booking` events, writes `core:{evt}:stock` / `sale` and nudges. Then the joint test with Backend 2.
 

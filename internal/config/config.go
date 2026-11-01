@@ -39,6 +39,7 @@ type Config struct {
 	MissWindow  time.Duration // an unclaimed turn is MISSED after this (HiFi: 60 s to enter); also the D-7 invitation window
 	RateWindow  time.Duration // ratePerMin window and the history kept for MISSED; must be >= MissWindow
 	RatePrior   time.Duration // average claim-to-paid time for the warm-up speed guess; 0 = off
+	HoldGrace   time.Duration // a held slot is kept this long past the payment deadline
 
 	DeviceTokenTTL    time.Duration
 	RLDevicePerIP     int64 // registrations per minute per IP

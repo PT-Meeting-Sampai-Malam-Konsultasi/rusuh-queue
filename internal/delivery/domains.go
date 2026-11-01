@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
+	consumerentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/consumer/domain/entity"
 	controllerentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/controller/domain/entity"
 	deviceentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/device/domain/entity"
 	queueentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
@@ -84,7 +85,13 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 		Valkey:   s.valkey,
 		Settings: adminUsecase,
 	})
-	s.background = append(s.background, controller.Run)
+
+	consumerConfig := consumerentity.DefaultConfig()
+	consumerConfig.Consumer = controllerConfig.TaskID
+	consumerConfig.HoldGrace = cfg.HoldGrace
+	consumer := NewConsumer(ConsumerDeps{Config: consumerConfig, DB: s.db, Valkey: s.valkey})
+
+	s.background = append(s.background, controller.Run, consumer.Run)
 	return nil
 }
 

@@ -22,3 +22,13 @@ sql:
         sql_package: "database/sql"
         emit_db_tags: true
         emit_interface: true
+  - engine: "postgresql"
+    schema: ["db/migrations/00001_queue_schema.sql", "db/migrations/00004_consumer_dlq_log.sql"]
+    queries: "db/queries/consumer/"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/consumer/infrastructure/postgres/sqlcgen"
+        sql_package: "database/sql"
+        emit_db_tags: true
+        emit_interface: true
