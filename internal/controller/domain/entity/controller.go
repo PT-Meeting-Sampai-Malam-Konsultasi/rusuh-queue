@@ -35,6 +35,10 @@ type Config struct {
 	// guess maxSlots / PriorOrderTime the frontier shows during warm-up
 	// (RATE_PRIOR_ORDER_TIME, rateSource "prior"); 0 turns the guess off.
 	PriorOrderTime time.Duration
+	// DrawBatch and DrawBudget bound the pre-open draw per tick: batches of
+	// DrawBatch devices until the list is empty or DrawBudget is spent.
+	DrawBatch  int
+	DrawBudget time.Duration
 }
 
 func DefaultConfig() Config {
@@ -48,6 +52,8 @@ func DefaultConfig() Config {
 		InviteWindow:    time.Minute,
 		HistWindow:      5 * time.Minute,
 		PriorOrderTime:  6 * time.Minute,
+		DrawBatch:       2000,
+		DrawBudget:      300 * time.Millisecond,
 	}
 }
 

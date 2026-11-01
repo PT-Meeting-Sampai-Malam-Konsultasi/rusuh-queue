@@ -152,6 +152,21 @@ func (mr *MockIControllerStoreMockRecorder) LiveEvents(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LiveEvents", reflect.TypeOf((*MockIControllerStore)(nil).LiveEvents), ctx)
 }
 
+// Lottery mocks base method.
+func (m *MockIControllerStore) Lottery(ctx context.Context, k qkeys.Event, fence int64, batch int) (dto.LotteryResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Lottery", ctx, k, fence, batch)
+	ret0, _ := ret[0].(dto.LotteryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Lottery indicates an expected call of Lottery.
+func (mr *MockIControllerStoreMockRecorder) Lottery(ctx, k, fence, batch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Lottery", reflect.TypeOf((*MockIControllerStore)(nil).Lottery), ctx, k, fence, batch)
+}
+
 // Purge mocks base method.
 func (m *MockIControllerStore) Purge(ctx context.Context, k qkeys.Event, fence int64, grace time.Duration, limit int) (dto.PurgeResult, error) {
 	m.ctrl.T.Helper()

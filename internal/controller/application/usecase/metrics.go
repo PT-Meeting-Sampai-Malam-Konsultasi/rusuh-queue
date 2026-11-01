@@ -13,6 +13,7 @@ type metrics struct {
 	skipped       metric.Int64Counter
 	leaderChanges metric.Int64Counter
 	purged        metric.Int64Counter
+	drawn         metric.Int64Counter
 }
 
 func newMetrics() metrics {
@@ -23,5 +24,6 @@ func newMetrics() metrics {
 	skipped, _ := m.Int64Counter("ticks_skipped_total")
 	leaderChanges, _ := m.Int64Counter("leader_changes_total")
 	purged, _ := m.Int64Counter("purged_total")
-	return metrics{duration: duration, lag: lag, skipped: skipped, leaderChanges: leaderChanges, purged: purged}
+	drawn, _ := m.Int64Counter("lottery_drawn_total")
+	return metrics{duration: duration, lag: lag, skipped: skipped, leaderChanges: leaderChanges, purged: purged, drawn: drawn}
 }

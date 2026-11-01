@@ -24,6 +24,7 @@ type ControllerUsecase struct {
 	// and when each was last checkpointed.
 	leading      map[string]int64
 	checkpointed map[string]time.Time
+	states       map[string]string
 	metrics      metrics
 }
 
@@ -34,6 +35,7 @@ func NewController(cfg entity.Config, store outbound.IControllerStore, checkpoin
 		subs:         map[string]context.CancelFunc{},
 		leading:      map[string]int64{},
 		checkpointed: map[string]time.Time{},
+		states:       map[string]string{},
 		metrics:      newMetrics(),
 	}
 }

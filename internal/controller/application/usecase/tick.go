@@ -90,6 +90,13 @@ func (s *ControllerUsecase) tickEvent(ctx context.Context, id string) {
 		}
 	}
 
+	if st := s.states[id]; st == "" || st == "preopen" {
+		if !s.draw(ctx, k, lead.Fence) {
+			s.lose(ctx, id)
+			return
+		}
+	}
+
 	r, err := s.store.Tick(ctx, k, dto.TickArgs{
 		Fence: lead.Fence, HistWindow: s.cfg.HistWindow, InviteWindow: s.cfg.InviteWindow, PriorOrderTime: s.cfg.PriorOrderTime,
 	})
@@ -102,6 +109,7 @@ func (s *ControllerUsecase) tickEvent(ctx context.Context, id string) {
 		s.lose(ctx, id)
 		return
 	}
+	s.states[id] = r.State
 	s.metrics.duration.Record(ctx, time.Since(start).Seconds())
 
 	// Half a tick of slack, so a 1 s checkpoint is not pushed to every other tick by jitter.
@@ -119,6 +127,35 @@ func (s *ControllerUsecase) lose(ctx context.Context, id string) {
 		slog.InfoContext(ctx, "no longer leading event", "event", id, "task", s.cfg.TaskID)
 		delete(s.leading, id)
 		delete(s.checkpointed, id)
+	}
+	delete(s.states, id)
+}
+
+// draw runs the pre-open lottery in batches until the draw list is empty or
+// the budget is spent, so 300,000 early devices are numbered within seconds
+// without one long script blocking the shard. It returns false on a stale fence.
+func (s *ControllerUsecase) draw(ctx context.Context, k qkeys.Event, fence int64) bool {
+	deadline := time.Now().Add(s.cfg.DrawBudget)
+	var drawn int64
+	defer func() {
+		if drawn > 0 {
+			s.metrics.drawn.Add(ctx, drawn)
+			slog.InfoContext(ctx, "pre-open draw", "event", k.ID, "drawn", drawn)
+		}
+	}()
+	for {
+		r, err := s.store.Lottery(ctx, k, fence, s.cfg.DrawBatch)
+		if err != nil {
+			slog.WarnContext(ctx, "lottery failed", "event", k.ID, "error", err)
+			return true
+		}
+		if r.Status == dto.LotteryStale {
+			return false
+		}
+		drawn += r.Drawn
+		if r.Status != dto.LotteryOK || r.Left == 0 || time.Now().After(deadline) {
+			return true
+		}
 	}
 }
 

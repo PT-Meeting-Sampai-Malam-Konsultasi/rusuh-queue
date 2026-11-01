@@ -58,3 +58,17 @@ type PurgeResult struct {
 	Purged int64
 	Stuck  int64 // held leases past their end (core's to resolve; alarm)
 }
+
+type LotteryStatus string
+
+const (
+	LotteryOK    LotteryStatus = "OK"
+	LotteryWait  LotteryStatus = "WAIT"
+	LotteryStale LotteryStatus = "STALE"
+)
+
+type LotteryResult struct {
+	Status LotteryStatus
+	Drawn  int64
+	Left   int64
+}

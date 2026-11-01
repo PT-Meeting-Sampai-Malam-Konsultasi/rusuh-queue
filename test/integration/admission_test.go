@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -303,4 +304,45 @@ func checkpointFence(db *sql.DB, eventID string) int64 {
 	var fence int64
 	_ = db.QueryRow(`SELECT fence FROM queue.checkpoint WHERE event_id = $1`, eventID).Scan(&fence)
 	return fence
+}
+
+// P1: devices that join before saleOpensAt are drawn at opening, the queue
+// opens, and a client claims with its pre-draw queue token (seq 0).
+func TestPreopenJoinersAreDrawnAndClaim(t *testing.T) {
+	e := newAdmissionEnv(t)
+	const id = "evt_pre"
+	testkit.CoreSale(t, e.client, sale(id, 700*time.Millisecond, "published"), stock(id, 100))
+	testkit.Publish(t, e.client, qkeys.CoreEventsChanged)
+	eventually(t, id+" preopen", func() bool { return cfgState(e.client, id) == "preopen" })
+
+	devs := make([]joined, 3)
+	for i := range devs {
+		devs[i] = joined{id: "w_pre" + strconv.Itoa(i), devToken: e.deviceToken(t, "w_pre"+strconv.Itoa(i))}
+		p := decodePlace(t, e.do("POST", "/v1/queue/"+id+"/join", map[string]string{"X-Device-Token": devs[i].devToken}))
+		if p.Seq != nil {
+			t.Fatalf("seq %d before the draw, want null", *p.Seq)
+		}
+		devs[i].queueToken = p.QueueToken
+	}
+
+	eventually(t, id+" open", func() bool { return cfgState(e.client, id) == "open" })
+	seqs := map[int]bool{}
+	for _, d := range devs {
+		rec, _ := e.claimUntil(t, id, d, 3*time.Second)
+		if rec.Code != 200 {
+			t.Fatalf("%s claim %d %s", d.id, rec.Code, rec.Body)
+		}
+		var adm api.Admission
+		if err := json.NewDecoder(rec.Body).Decode(&adm); err != nil {
+			t.Fatal(err)
+		}
+		var c token.AdmissionClaims
+		if err := e.keys.Verify(token.KindAdmission, adm.AdmissionToken, token.AudienceCore, &c); err != nil {
+			t.Fatal(err)
+		}
+		seqs[int(c.Seq)] = true
+	}
+	if len(seqs) != 3 || !seqs[1] || !seqs[2] || !seqs[3] {
+		t.Fatalf("admission seqs %v, want 1, 2 and 3", seqs)
+	}
 }

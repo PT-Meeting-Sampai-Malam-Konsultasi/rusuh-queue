@@ -153,6 +153,18 @@ func (s *store) Tick(ctx context.Context, k qkeys.Event, a dto.TickArgs) (dto.Ti
 	return r, nil
 }
 
+func (s *store) Lottery(ctx context.Context, k qkeys.Event, fence int64, batch int) (dto.LotteryResult, error) {
+	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_lottery_v1",
+		[]string{k.Cfg, k.Seq, k.Devs, k.Pre, k.Fence}, ms(fence), strconv.Itoa(batch)).ToArray()
+	if err != nil || len(vals) != 3 {
+		return dto.LotteryResult{}, fmt.Errorf("lottery %s: %v %v", k.ID, vals, err)
+	}
+	status, _ := vals[0].ToString()
+	drawn, _ := vals[1].AsInt64()
+	left, _ := vals[2].AsInt64()
+	return dto.LotteryResult{Status: dto.LotteryStatus(status), Drawn: drawn, Left: left}, nil
+}
+
 func ms(v int64) string { return strconv.FormatInt(v, 10) }
 
 func (s *store) Subscribe(ctx context.Context, channel string, onEvent func(string)) {

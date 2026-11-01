@@ -525,8 +525,34 @@ local function claim_v1(keys, args)
   return {'OK', slot, units, ends, attached, now}
 end
 
+-- rusuh_lottery_v1: the pre-open draw (NFR-05). Once opensAt has passed, give up to
+-- `batch` devices of the draw list a seq in random order (one SPOP each, so every
+-- remaining device is equally likely). The queue stays preopen until the list is
+-- empty; tick_v1 then opens it.
+-- KEYS: cfg, seq, devs, pre, fence; ARGV: fence, batch
+-- Returns {status, drawn, left}; status OK | WAIT (not preopen or before opensAt) | STALE.
+local function lottery_v1(keys, args)
+  local cfg, seqk, devs, pre, fence = keys[1], keys[2], keys[3], keys[4], keys[5]
+  if server.call('GET', fence) ~= args[1] then return {'STALE', 0, 0} end
+  local c = server.call('HMGET', cfg, 'state', 'opensAt')
+  if c[1] ~= 'preopen' or now_ms() < int(c[2]) then return {'WAIT', 0, server.call('SCARD', pre)} end
+  local seq, drawn = int(server.call('GET', seqk)), 0
+  for _ = 1, int(args[2]) do
+    local device = server.call('SPOP', pre)
+    if not device then break end
+    if server.call('HGET', devs, device) == 'pre' then
+      seq = seq + 1
+      drawn = drawn + 1
+      server.call('HSET', devs, device, fmt(seq))
+    end
+  end
+  if drawn > 0 then server.call('SET', seqk, fmt(seq), 'KEEPTTL') end
+  return {'OK', drawn, server.call('SCARD', pre)}
+end
+
 server.register_function('rusuh_lead_v1', lead_v1)
 server.register_function('rusuh_resign_v1', resign_v1)
 server.register_function('rusuh_purge_v1', purge_v1)
 server.register_function('rusuh_tick_v1', tick_v1)
 server.register_function('rusuh_claim_v1', claim_v1)
+server.register_function('rusuh_lottery_v1', lottery_v1)

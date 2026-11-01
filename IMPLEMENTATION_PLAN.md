@@ -427,7 +427,7 @@ and `unreserved + resv == PostgreSQL available` once no event is in flight (rese
 
 - [ ] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain).
 - [ ] `adminUpdateQueue` on the private listener, audit log.
-- [ ] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` after the draw.
+- [x] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` and `claimTurn` after the draw (1 Nov).
 
 **Verify:** through Cloudflare on the lab, events arrive one per second unbuffered and a stream survives 125 s on
 heartbeats; `turn` arrives within 1 s of `served` passing `seq`; a pod killed mid-stream → clients reconnect or poll

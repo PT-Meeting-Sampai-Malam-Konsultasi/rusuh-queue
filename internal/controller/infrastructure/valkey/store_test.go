@@ -410,3 +410,81 @@ func TestPurgeReturnsUnits(t *testing.T) {
 		t.Fatalf("second purge = %+v", p)
 	}
 }
+
+// P1 / NFR-05: devices that joined before opening get every number once, in random order.
+func TestLotteryNumbersEveryPreopenDevice(t *testing.T) {
+	client := testkit.Valkey(t)
+	s := valkey.New(client)
+	ctx := context.Background()
+	opens := time.Now().Add(3 * time.Second)
+	k := testkit.Event(t, client, "evt_draw", testkit.EventOpts{OpensIn: time.Until(opens)})
+	const n = 1000
+	testkit.Joins(t, client, k, "w_d", n)
+	l := lead(t, s, k, "task-a")
+
+	if r, err := s.Lottery(ctx, k, l.Fence, 300); err != nil || r.Status != dto.LotteryWait || r.Left != n {
+		t.Fatalf("before opensAt: %+v %v, want WAIT with %d left", r, err, n)
+	}
+	time.Sleep(time.Until(opens) + 100*time.Millisecond)
+	if r, err := s.Lottery(ctx, k, l.Fence+1, 300); err != nil || r.Status != dto.LotteryStale {
+		t.Fatalf("stale fence: %+v %v", r, err)
+	}
+
+	var drawn int64
+	for {
+		r, err := s.Lottery(ctx, k, l.Fence, 300)
+		if err != nil || r.Status != dto.LotteryOK {
+			t.Fatalf("draw: %+v %v", r, err)
+		}
+		drawn += r.Drawn
+		if r.Left == 0 {
+			break
+		}
+	}
+	if drawn != n || testkit.Int(t, client, k.Seq) != n {
+		t.Fatalf("drawn %d seq %d, want %d", drawn, testkit.Int(t, client, k.Seq), n)
+	}
+
+	seen := make(map[int64]bool, n)
+	inJoinOrder := 0
+	for i := range n {
+		v, err := client.Do(ctx, client.B().Hget().Key(k.Devs).Field("w_d"+strconv.Itoa(i)).Build()).AsInt64()
+		if err != nil || v < 1 || v > n || seen[v] {
+			t.Fatalf("device %d: seq %d %v (duplicate or out of range)", i, v, err)
+		}
+		seen[v] = true
+		if v == int64(i+1) {
+			inJoinOrder++
+		}
+	}
+	if inJoinOrder > n/10 {
+		t.Fatalf("%d of %d devices kept their join order; the draw is not random", inJoinOrder, n)
+	}
+
+	r := testkit.Tick(t, client, k, testkit.TickArgs{})
+	if r[0] != "OK" || r[3] != "open" {
+		t.Fatalf("tick after the draw: %v, want open", r)
+	}
+}
+
+// A device that left the draw list before the draw gets no number.
+func TestLotterySkipsDevicesThatLeft(t *testing.T) {
+	client := testkit.Valkey(t)
+	s := valkey.New(client)
+	ctx := context.Background()
+	k := testkit.Event(t, client, "evt_draw_left", testkit.EventOpts{OpensIn: 200 * time.Millisecond})
+	testkit.Joins(t, client, k, "w_l", 3)
+	if err := valkeyx.FCall(ctx, client, "rusuh_leave_v1", []string{k.Cfg, k.Devs, k.Pre}, "w_l1").Error(); err != nil {
+		t.Fatal(err)
+	}
+	l := lead(t, s, k, "task-a")
+	time.Sleep(300 * time.Millisecond)
+
+	r, err := s.Lottery(ctx, k, l.Fence, 100)
+	if err != nil || r.Drawn != 2 || r.Left != 0 {
+		t.Fatalf("draw: %+v %v, want 2 drawn", r, err)
+	}
+	if v, _ := client.Do(ctx, client.B().Hexists().Key(k.Devs).Field("w_l1").Build()).AsBool(); v {
+		t.Fatal("the device that left still has a place")
+	}
+}

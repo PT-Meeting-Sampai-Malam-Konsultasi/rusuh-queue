@@ -134,6 +134,14 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 		return nil, &entity.RateLimitedError{RetryAfter: r.RetryAfter}
 	}
 
+	if tokenSeq == 0 {
+		// A queue token from before the draw carries seq 0; claim with the number the draw gave.
+		v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.cfg.MissWindow)
+		if err != nil {
+			return nil, err
+		}
+		tokenSeq = placeSeq(v.Value)
+	}
 	slot, err := newSlotID()
 	if err != nil {
 		return nil, err
@@ -188,6 +196,15 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 		ExpiresAt:     res.EndsAt,
 		ServerNow:     res.ServerNow,
 	}, nil
+}
+
+// placeSeq reads the seq of a numbered ("57") or used ("x:57") place; 0 otherwise.
+func placeSeq(v string) int64 {
+	n, err := strconv.ParseInt(strings.TrimPrefix(v, "x:"), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // newSlotID returns "s_" + 16 random bytes; core stores it under a unique
