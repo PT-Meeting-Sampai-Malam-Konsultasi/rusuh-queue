@@ -61,10 +61,11 @@ func Load() *Config {
 
 		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
 
-		LogLevel:         getEnv("LOG_LEVEL", "info"),
-		LogFormat:        getEnv("LOG_FORMAT", "text"),
-		OtelExporterType: getEnv("OTEL_EXPORTER_TYPE", "stdout"),
-		OtelEndpoint:     getEnv("OTEL_ENDPOINT", "localhost:4317"),
+		LogLevel:            getEnv("LOG_LEVEL", "info"),
+		LogFormat:           getEnv("LOG_FORMAT", "text"),
+		OtelExporterType:    getEnv("OTEL_EXPORTER_TYPE", "stdout"),
+		OtelEndpoint:        getEnv("OTEL_ENDPOINT", "localhost:4318"),
+		OtelMetricsExporter: os.Getenv("OTEL_METRICS_EXPORTER"),
 	}
 }
 

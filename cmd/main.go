@@ -12,6 +12,7 @@ import (
 
 	obsconfig "github.com/goleggo/observer/config"
 	obslog "github.com/goleggo/observer/log"
+	obsmetrics "github.com/goleggo/observer/metrics"
 	obstrace "github.com/goleggo/observer/trace"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
@@ -36,6 +37,22 @@ func main() {
 		defer func() {
 			if err := tp.Shutdown(ctx); err != nil {
 				slog.Error("Failed to shut down tracer provider", "error", err)
+			}
+		}()
+	}
+	mp, err := obsmetrics.SetupMetrics(ctx, obsconfig.OTELConfig{
+		ServiceName:     "rusuh-queue",
+		ExporterType:    cfg.OtelExporterType,
+		MetricsExporter: cfg.OtelMetricsExporter,
+		Endpoint:        cfg.OtelEndpoint,
+		Insecure:        true,
+	})
+	if err != nil {
+		slog.Error("Failed to set up metrics", "error", err)
+	} else if mp != nil {
+		defer func() {
+			if err := mp.Shutdown(ctx); err != nil {
+				slog.Error("Failed to shut down meter provider", "error", err)
 			}
 		}()
 	}

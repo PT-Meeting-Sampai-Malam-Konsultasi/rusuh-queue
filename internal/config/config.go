@@ -56,8 +56,9 @@ type Config struct {
 	// orchestrator's grace period (lab: 45 s, ECS stopTimeout: 45 s).
 	ShutdownTimeout time.Duration
 
-	LogLevel         string
-	LogFormat        string
-	OtelExporterType string
-	OtelEndpoint     string
+	LogLevel            string
+	LogFormat           string
+	OtelExporterType    string
+	OtelEndpoint        string
+	OtelMetricsExporter string // overrides OtelExporterType for metrics; none turns them off
 }

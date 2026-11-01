@@ -135,6 +135,7 @@ func (s *ControllerUsecase) tickEvent(ctx context.Context, id string, nudged boo
 	}
 	s.states[id] = r.State
 	s.metrics.duration.Record(ctx, time.Since(start).Seconds())
+	s.metrics.recordQueue(ctx, id, r)
 
 	// Half a tick of slack, so a 1 s checkpoint is not pushed to every other tick by jitter.
 	if now := s.now(); now.Add(s.cfg.TickEvery/2).Sub(s.checkpointed[id]) >= s.cfg.CheckpointEvery {
