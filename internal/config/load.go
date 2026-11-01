@@ -18,7 +18,11 @@ func Load() *Config {
 
 	return &Config{
 		Port: getEnv("PORT", "8080"),
-		Env:  getEnv("ENV", "development"),
+
+		AdminPort:    getEnv("ADMIN_PORT", "8081"),
+		AdminJWKSURL: os.Getenv("ADMIN_JWKS_URL"),
+		AdminIssuer:  getEnv("ADMIN_ISSUER", "rusuh-admin"),
+		Env:          getEnv("ENV", "development"),
 
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/rusuh?sslmode=disable"),
 

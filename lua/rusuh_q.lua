@@ -68,11 +68,32 @@ local function live_place(v, hist, cfg, served, now, window)
   return not missed
 end
 
+-- apply_state sets the operator's switch (adminUpdateQueue, OPS-01): paused holds
+-- admission, closed ends the queue, open lifts both. Only an operator close is
+-- lifted; sold out, cancelled and ended stay closed. pre (optional) keeps a draw
+-- list that is not empty in preopen.
+local function apply_state(cfg, pre, want)
+  local c = server.call('HMGET', cfg, 'state', 'reason', 'opensAt')
+  if want == 'closed' then
+    server.call('HDEL', cfg, 'hold')
+    if c[1] ~= 'closed' then server.call('HSET', cfg, 'state', 'closed', 'reason', 'operator') end
+    return
+  end
+  if want == 'paused' then server.call('HSET', cfg, 'hold', '1') else server.call('HDEL', cfg, 'hold') end
+  if c[1] == 'closed' and c[2] == 'operator' then
+    local state = 'open'
+    if now_ms() < int(c[3]) or (pre and server.call('SCARD', pre) > 0) then state = 'preopen' end
+    server.call('HSET', cfg, 'state', state)
+    server.call('HDEL', cfg, 'reason')
+  end
+end
+
 -- rusuh_bootstrap_v1: create or refresh one event's queue from core's sale and
 -- stock snapshots (D-1, D-2). Idempotent; any task may run it.
--- KEYS: cfg, seq, served, unreserved, resv, frontier
+-- KEYS: cfg, seq, served, unreserved, resv, frontier, pre (optional)
 -- ARGV: nowMs, opensAtMs, endsAtMs, expireAtMs, cancelled (0|1), available,
---       maxSlots, rateCap, streamFrom, initialFrontierJSON
+--       maxSlots, rateCap, streamFrom, initialFrontierJSON, operator state (optional,
+--       so tasks on the previous build keep working)
 -- Returns {"CREATED"|"UPDATED", state}.
 local function bootstrap_v1(keys, args)
   local cfg, seq, served, unreserved, resv, frontier = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6]
@@ -103,6 +124,10 @@ local function bootstrap_v1(keys, args)
 
   server.call('HSET', cfg, 'opensAt', args[2], 'endsAt', args[3], 'expireAt', expire_at,
     'maxSlots', args[7], 'rateCap', args[8], 'streamFrom', args[9])
+  if args[11] then
+    apply_state(cfg, keys[7], args[11])
+    state = server.call('HGET', cfg, 'state')
+  end
   for _, k in ipairs({cfg, seq, served, unreserved, resv, frontier}) do
     server.call('PEXPIREAT', k, expire_at)
   end
@@ -637,6 +662,34 @@ local function reconcile_v1(keys, args)
   return {'OK', drift, 1, reopened}
 end
 
+-- rusuh_configure_v1: an operator's settings (adminUpdateQueue). Applies them to cfg and
+-- to the stored frontier at once, so the answer shows the new state; the next tick
+-- recomputes and publishes it.
+-- KEYS: cfg, frontier, pre; ARGV: state (open | paused | closed), maxSlots, rateCap, streamFrom
+-- Returns the frontier JSON, or false when the event has no queue.
+local function configure_v1(keys, args)
+  local cfg, frontier, pre = keys[1], keys[2], keys[3]
+  if server.call('EXISTS', cfg) == 0 then return false end
+  server.call('HSET', cfg, 'maxSlots', args[2], 'rateCap', args[3], 'streamFrom', args[4])
+  apply_state(cfg, pre, args[1])
+
+  local raw = server.call('GET', frontier)
+  if not raw then return false end
+  local f = cjson.decode(raw)
+  local c = server.call('HMGET', cfg, 'state', 'reason', 'hold')
+  f.streamFrom = int(args[4])
+  if c[1] == 'closed' or c[1] == 'preopen' then
+    f.state, f.reason = c[1], c[2] or nil
+  elseif c[3] == '1' then
+    f.state, f.reason = 'paused', 'operator'
+  elseif f.state == 'closed' or (f.state == 'paused' and f.reason == 'operator') then
+    f.state, f.reason = 'open', nil
+  end
+  raw = cjson.encode(f)
+  server.call('SET', frontier, raw, 'KEEPTTL')
+  return raw
+end
+
 server.register_function('rusuh_lead_v1', lead_v1)
 server.register_function('rusuh_resign_v1', resign_v1)
 server.register_function('rusuh_purge_v1', purge_v1)
@@ -645,3 +698,4 @@ server.register_function('rusuh_claim_v1', claim_v1)
 server.register_function('rusuh_lottery_v1', lottery_v1)
 server.register_function('rusuh_release_v1', release_v1)
 server.register_function('rusuh_reconcile_v1', reconcile_v1)
+server.register_function('rusuh_configure_v1', configure_v1)

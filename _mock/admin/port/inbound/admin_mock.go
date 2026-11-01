@@ -55,3 +55,18 @@ func (mr *MockIAdminUsecaseMockRecorder) QueueSettings(ctx, eventID any) *gomock
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueueSettings", reflect.TypeOf((*MockIAdminUsecase)(nil).QueueSettings), ctx, eventID)
 }
+
+// UpdateQueue mocks base method.
+func (m *MockIAdminUsecase) UpdateQueue(ctx context.Context, eventID string, p entity.Patch, by string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateQueue", ctx, eventID, p, by)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateQueue indicates an expected call of UpdateQueue.
+func (mr *MockIAdminUsecaseMockRecorder) UpdateQueue(ctx, eventID, p, by any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateQueue", reflect.TypeOf((*MockIAdminUsecase)(nil).UpdateQueue), ctx, eventID, p, by)
+}

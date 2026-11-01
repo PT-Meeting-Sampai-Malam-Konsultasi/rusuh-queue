@@ -6,7 +6,11 @@ import (
 
 type Config struct {
 	Port string
-	Env  string
+	// AdminPort serves the operator API (adminUpdateQueue); never expose it publicly.
+	AdminPort    string
+	AdminJWKSURL string // company SSO keys for operator tokens (EdDSA)
+	AdminIssuer  string
+	Env          string
 
 	DatabaseURL string
 

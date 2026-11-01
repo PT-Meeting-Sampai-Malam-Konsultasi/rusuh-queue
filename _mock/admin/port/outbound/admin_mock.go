@@ -55,3 +55,71 @@ func (mr *MockIAdminRepositoryMockRecorder) GetSettings(ctx, eventID any) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSettings", reflect.TypeOf((*MockIAdminRepository)(nil).GetSettings), ctx, eventID)
 }
+
+// SaveSettings mocks base method.
+func (m *MockIAdminRepository) SaveSettings(ctx context.Context, s entity.Settings, by, reason string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveSettings", ctx, s, by, reason)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveSettings indicates an expected call of SaveSettings.
+func (mr *MockIAdminRepositoryMockRecorder) SaveSettings(ctx, s, by, reason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveSettings", reflect.TypeOf((*MockIAdminRepository)(nil).SaveSettings), ctx, s, by, reason)
+}
+
+// MockIQueueConfig is a mock of IQueueConfig interface.
+type MockIQueueConfig struct {
+	ctrl     *gomock.Controller
+	recorder *MockIQueueConfigMockRecorder
+	isgomock struct{}
+}
+
+// MockIQueueConfigMockRecorder is the mock recorder for MockIQueueConfig.
+type MockIQueueConfigMockRecorder struct {
+	mock *MockIQueueConfig
+}
+
+// NewMockIQueueConfig creates a new mock instance.
+func NewMockIQueueConfig(ctrl *gomock.Controller) *MockIQueueConfig {
+	mock := &MockIQueueConfig{ctrl: ctrl}
+	mock.recorder = &MockIQueueConfigMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIQueueConfig) EXPECT() *MockIQueueConfigMockRecorder {
+	return m.recorder
+}
+
+// Apply mocks base method.
+func (m *MockIQueueConfig) Apply(ctx context.Context, s entity.Settings) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Apply", ctx, s)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Apply indicates an expected call of Apply.
+func (mr *MockIQueueConfigMockRecorder) Apply(ctx, s any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockIQueueConfig)(nil).Apply), ctx, s)
+}
+
+// Live mocks base method.
+func (m *MockIQueueConfig) Live(ctx context.Context, eventID string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Live", ctx, eventID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Live indicates an expected call of Live.
+func (mr *MockIQueueConfigMockRecorder) Live(ctx, eventID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Live", reflect.TypeOf((*MockIQueueConfig)(nil).Live), ctx, eventID)
+}

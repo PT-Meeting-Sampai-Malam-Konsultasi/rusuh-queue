@@ -428,7 +428,7 @@ and `unreserved + resv == PostgreSQL available` once no event is in flight (rese
 ### M5 — Stream, admin, lottery (Mon 9 – Tue 10 Nov)
 
 - [ ] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain).
-- [ ] `adminUpdateQueue` on the private listener, audit log.
+- [x] `adminUpdateQueue` on the private listener (`ADMIN_PORT`), audit columns in `event_queue_config` (1 Nov).
 - [x] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` and `claimTurn` after the draw (1 Nov).
 
 **Verify:** through Cloudflare on the lab, events arrive one per second unbuffered and a stream survives 125 s on

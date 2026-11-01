@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	ErrMissing = errors.New("auth: token missing")
-	ErrInvalid = errors.New("auth: token invalid")
+	ErrMissing   = errors.New("auth: token missing")
+	ErrInvalid   = errors.New("auth: token invalid")
+	ErrForbidden = errors.New("auth: token lacks the required authentication")
 )
 
 const (

@@ -15,4 +15,13 @@ import (
 type IAdminRepository interface {
 	// GetSettings returns (nil, nil) when no settings are saved for the event.
 	GetSettings(ctx context.Context, eventID string) (*entity.Settings, error)
+	// SaveSettings records the settings with who changed them and why (audit).
+	SaveSettings(ctx context.Context, s entity.Settings, by, reason string) error
+}
+
+// IQueueConfig applies settings to a live queue in Valkey.
+type IQueueConfig interface {
+	Live(ctx context.Context, eventID string) (bool, error)
+	// Apply returns the frontier as it stands after the change.
+	Apply(ctx context.Context, s entity.Settings) ([]byte, error)
 }

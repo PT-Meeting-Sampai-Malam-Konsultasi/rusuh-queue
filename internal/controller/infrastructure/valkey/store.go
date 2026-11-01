@@ -60,11 +60,11 @@ func (s *store) Bootstrap(ctx context.Context, k qkeys.Event, a dto.BootstrapArg
 		cancelled = "1"
 	}
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_bootstrap_v1",
-		[]string{k.Cfg, k.Seq, k.Served, k.Unreserved, k.Resv, k.Frontier},
+		[]string{k.Cfg, k.Seq, k.Served, k.Unreserved, k.Resv, k.Frontier, k.Pre},
 		ms(a.Now.UnixMilli()), ms(a.OpensAt.UnixMilli()), ms(a.EndsAt.UnixMilli()), ms(a.ExpireAt.UnixMilli()),
 		cancelled, ms(a.Available),
 		ms(a.Settings.MaxSlots), ms(a.Settings.RateCap), ms(a.Settings.StreamFrom),
-		string(a.InitialFrontier),
+		string(a.InitialFrontier), a.Settings.State,
 	).AsStrSlice()
 	if err != nil {
 		return "", "", fmt.Errorf("bootstrap %s: %w", k.ID, err)

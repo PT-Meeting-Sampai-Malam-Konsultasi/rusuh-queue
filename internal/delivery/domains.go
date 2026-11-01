@@ -23,7 +23,7 @@ import (
 
 // wireDomains builds the token, rate-limit and verification clients and wires
 // every domain onto mux; long-running routines go to s.background.
-func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver *clientip.Resolver) error {
+func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, ipResolver *clientip.Resolver) error {
 	keys, err := loadKeyring(cfg)
 	if err != nil {
 		return fmt.Errorf("signing keys: %w", err)
@@ -70,8 +70,12 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 	})
 	RegisterStream(mux)
 
-	adminUsecase := NewAdmin(s.db)
-	RegisterAdmin(mux, adminUsecase)
+	adminUsecase := NewAdmin(s.db, s.valkey)
+	adminAuth := auth.NewAdmin(cfg.AdminJWKSURL, cfg.AdminIssuer)
+	if !adminAuth.Configured() {
+		slog.Warn("ADMIN_JWKS_URL empty: adminUpdateQueue refuses every call")
+	}
+	RegisterAdmin(adminMux, adminUsecase, adminAuth)
 
 	controllerConfig := controllerentity.DefaultConfig()
 	controllerConfig.TickEvery = cfg.Tick

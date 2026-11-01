@@ -6,10 +6,10 @@ import (
 )
 
 type AdminUsecase struct {
-	repo outbound.IAdminRepository
+	repo  outbound.IAdminRepository
+	queue outbound.IQueueConfig
 }
 
-// New builds the concrete Service implementation for admin.
-func NewAdmin(repo outbound.IAdminRepository) inbound.IAdminUsecase {
-	return &AdminUsecase{repo: repo}
+func NewAdmin(repo outbound.IAdminRepository, queue outbound.IQueueConfig) inbound.IAdminUsecase {
+	return &AdminUsecase{repo: repo, queue: queue}
 }

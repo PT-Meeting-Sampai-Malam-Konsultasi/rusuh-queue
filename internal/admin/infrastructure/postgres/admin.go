@@ -32,6 +32,22 @@ func (r *adminRepository) GetSettings(ctx context.Context, eventID string) (*ent
 	return toDomain(row), nil
 }
 
+func (r *adminRepository) SaveSettings(ctx context.Context, s entity.Settings, by, reason string) error {
+	_, err := r.q.UpsertEventQueueConfig(ctx, sqlcgen.UpsertEventQueueConfigParams{
+		EventID:    s.EventID,
+		MaxSlots:   int32(s.MaxSlots),
+		RateCap:    int32(s.RateCap),
+		StreamFrom: int32(s.StreamFrom),
+		State:      s.State,
+		UpdatedBy:  by,
+		Reason:     sql.NullString{String: reason, Valid: reason != ""},
+	})
+	if err != nil {
+		return fmt.Errorf("save queue settings %s: %w", s.EventID, err)
+	}
+	return nil
+}
+
 // toDomain converts a persistence row into the module's public domain entity.
 func toDomain(row sqlcgen.QueueEventQueueConfig) *entity.Settings {
 	return &entity.Settings{

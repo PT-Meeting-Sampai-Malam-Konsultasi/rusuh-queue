@@ -45,7 +45,7 @@ func startControllerWith(t *testing.T, client vk.Client, db *sql.DB, cfg entity.
 		Config:   cfg,
 		DB:       db,
 		Valkey:   client,
-		Settings: delivery.NewAdmin(db),
+		Settings: delivery.NewAdmin(db, client),
 	})
 	go func() { _ = m.Run(ctx); close(done) }()
 	var once sync.Once

@@ -24,7 +24,9 @@ import (
 // clients to close on shutdown.
 type Server struct {
 	Handler http.Handler
-	Health  *health.Handler
+	// AdminHandler serves the operator API; it must only listen on a private network.
+	AdminHandler http.Handler
+	Health       *health.Handler
 
 	db         *sql.DB
 	valkey     vk.Client
@@ -64,10 +66,12 @@ func (s *Server) wire(cfg *config.Config) error {
 	})
 	s.Health.RegisterRoutes(mux)
 
-	if err := s.wireDomains(cfg, mux, ipResolver); err != nil {
+	adminMux := http.NewServeMux()
+	if err := s.wireDomains(cfg, mux, adminMux, ipResolver); err != nil {
 		return err
 	}
 	s.Handler = httpmw.CORS(cfg.CORSOrigins, mux)
+	s.AdminHandler = adminMux
 	return nil
 }
 

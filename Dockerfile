@@ -23,6 +23,6 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /rusuh-queue /rusuh-queue
 
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 8080 8081
 
 ENTRYPOINT ["/rusuh-queue"]

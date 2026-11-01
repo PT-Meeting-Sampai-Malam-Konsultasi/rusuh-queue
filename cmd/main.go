@@ -47,28 +47,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// No WriteTimeout: the SSE route (ADR-0015) sets per-write deadlines itself.
-	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           app.Handler,
-		ReadHeaderTimeout: 2 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    16 << 10,
-	}
+	srv := newServer(":"+cfg.Port, app.Handler)
+	adminSrv := newServer(":"+cfg.AdminPort, app.AdminHandler)
 
 	bgCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
 	bgDone := make(chan struct{})
 	go func() { app.Run(bgCtx); close(bgDone) }()
 
-	go func() {
-		slog.Info("Server listening on :" + cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("Server failed to run", "error", err)
-			os.Exit(1)
-		}
-	}()
+	go serve(srv, "Server")
+	go serve(adminSrv, "Admin server")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -84,6 +72,9 @@ func main() {
 	if err := srv.Shutdown(ctxShutdown); err != nil {
 		slog.Error("Server HTTP shutdown failed", "error", err)
 	}
+	if err := adminSrv.Shutdown(ctxShutdown); err != nil {
+		slog.Error("Admin server HTTP shutdown failed", "error", err)
+	}
 
 	// 3. Stop the background routines (the controller resigns its leaderships).
 	stopBackground()
@@ -97,4 +88,24 @@ func main() {
 	// 4. Close Valkey and the database pool after the workers finished.
 	app.Close()
 	slog.Info("Server exiting")
+}
+
+// newServer has no WriteTimeout: the SSE route (ADR-0015) sets per-write deadlines itself.
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
+}
+
+func serve(srv *http.Server, name string) {
+	slog.Info(name + " listening on " + srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error(name+" failed to run", "error", err)
+		os.Exit(1)
+	}
 }

@@ -13,4 +13,6 @@ import (
 type IAdminUsecase interface {
 	// QueueSettings returns the saved settings, or DefaultSettings when none are saved.
 	QueueSettings(ctx context.Context, eventID string) (entity.Settings, error)
+	// UpdateQueue saves and applies an operator's change and returns the frontier.
+	UpdateQueue(ctx context.Context, eventID string, p entity.Patch, by string) ([]byte, error)
 }
