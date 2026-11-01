@@ -181,3 +181,33 @@ func TestControllerIgnoresBadDocuments(t *testing.T) {
 		t.Fatalf("state = %q, want no queue for a bad sale document", s)
 	}
 }
+
+// P3: core's stock changes after setup; the leader corrects unreserved after a
+// nudge, and ignores a snapshot that is too old.
+func TestControllerReconcilesStock(t *testing.T) {
+	client := testkit.Valkey(t)
+	startController(t, client, testkit.Postgres(t))
+	time.Sleep(300 * time.Millisecond)
+	const id = "evt_rcl"
+	k := qkeys.For(id)
+	testkit.CoreSale(t, client, sale(id, -time.Minute, "published"), stock(id, 100))
+	testkit.Publish(t, client, qkeys.CoreEventsChanged)
+	eventually(t, "set up", func() bool { return cfgState(client, id) == "open" })
+
+	old := stock(id, 40)
+	old.TS = time.Now().Add(-time.Minute).UTC()
+	testkit.CoreSale(t, client, sale(id, -time.Minute, "published"), old)
+	for range 5 {
+		testkit.Publish(t, client, k.CoreChanged)
+		time.Sleep(250 * time.Millisecond)
+	}
+	if n := testkit.Int(t, client, k.Unreserved); n != 100 {
+		t.Fatalf("unreserved %d from a stale snapshot, want 100", n)
+	}
+
+	testkit.CoreSale(t, client, sale(id, -time.Minute, "published"), stock(id, 120))
+	eventually(t, "corrected", func() bool {
+		testkit.Publish(t, client, k.CoreChanged)
+		return testkit.Int(t, client, k.Unreserved) == 120
+	})
+}

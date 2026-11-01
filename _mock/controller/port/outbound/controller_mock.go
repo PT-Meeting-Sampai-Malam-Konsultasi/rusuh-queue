@@ -105,6 +105,21 @@ func (mr *MockIControllerStoreMockRecorder) CoreEvents(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CoreEvents", reflect.TypeOf((*MockIControllerStore)(nil).CoreEvents), ctx)
 }
 
+// CoreStock mocks base method.
+func (m *MockIControllerStore) CoreStock(ctx context.Context, k qkeys.Event) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CoreStock", ctx, k)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CoreStock indicates an expected call of CoreStock.
+func (mr *MockIControllerStoreMockRecorder) CoreStock(ctx, k any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CoreStock", reflect.TypeOf((*MockIControllerStore)(nil).CoreStock), ctx, k)
+}
+
 // Counters mocks base method.
 func (m *MockIControllerStore) Counters(ctx context.Context, k qkeys.Event) (int64, int64, bool, error) {
 	m.ctrl.T.Helper()
@@ -180,6 +195,21 @@ func (m *MockIControllerStore) Purge(ctx context.Context, k qkeys.Event, fence i
 func (mr *MockIControllerStoreMockRecorder) Purge(ctx, k, fence, grace, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Purge", reflect.TypeOf((*MockIControllerStore)(nil).Purge), ctx, k, fence, grace, limit)
+}
+
+// Reconcile mocks base method.
+func (m *MockIControllerStore) Reconcile(ctx context.Context, k qkeys.Event, fence, available int64) (dto.ReconcileResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Reconcile", ctx, k, fence, available)
+	ret0, _ := ret[0].(dto.ReconcileResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Reconcile indicates an expected call of Reconcile.
+func (mr *MockIControllerStoreMockRecorder) Reconcile(ctx, k, fence, available any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reconcile", reflect.TypeOf((*MockIControllerStore)(nil).Reconcile), ctx, k, fence, available)
 }
 
 // RemoveLive mocks base method.

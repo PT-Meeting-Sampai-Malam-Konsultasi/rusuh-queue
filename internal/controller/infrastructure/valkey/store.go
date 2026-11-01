@@ -165,6 +165,30 @@ func (s *store) Lottery(ctx context.Context, k qkeys.Event, fence int64, batch i
 	return dto.LotteryResult{Status: dto.LotteryStatus(status), Drawn: drawn, Left: left}, nil
 }
 
+func (s *store) CoreStock(ctx context.Context, k qkeys.Event) ([]byte, error) {
+	b, err := s.client.Do(ctx, s.client.B().Get().Key(k.CoreStock).Build()).AsBytes()
+	if vk.IsValkeyNil(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("core stock %s: %w", k.ID, err)
+	}
+	return b, nil
+}
+
+func (s *store) Reconcile(ctx context.Context, k qkeys.Event, fence, available int64) (dto.ReconcileResult, error) {
+	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_reconcile_v1",
+		[]string{k.Cfg, k.Unreserved, k.Resv, k.Fence}, ms(fence), ms(available)).ToArray()
+	if err != nil || len(vals) != 4 {
+		return dto.ReconcileResult{}, fmt.Errorf("reconcile %s: %v %v", k.ID, vals, err)
+	}
+	status, _ := vals[0].ToString()
+	drift, _ := vals[1].AsInt64()
+	applied, _ := vals[2].AsInt64()
+	reopened, _ := vals[3].AsInt64()
+	return dto.ReconcileResult{Stale: status == "STALE", Drift: drift, Applied: applied == 1, Reopened: reopened == 1}, nil
+}
+
 func ms(v int64) string { return strconv.FormatInt(v, 10) }
 
 func (s *store) Subscribe(ctx context.Context, channel string, onEvent func(string)) {

@@ -488,3 +488,64 @@ func TestLotterySkipsDevicesThatLeft(t *testing.T) {
 		t.Fatal("the device that left still has a place")
 	}
 }
+
+func TestReconcile(t *testing.T) {
+	client := testkit.Valkey(t)
+	s := valkey.New(client)
+	ctx := context.Background()
+	k := testkit.Event(t, client, "evt_rc", testkit.EventOpts{Available: 10})
+	l := lead(t, s, k, "task-a")
+	run := func(available int64) dto.ReconcileResult {
+		t.Helper()
+		r, err := s.Reconcile(ctx, k, l.Fence, available)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	if r := run(10); r.Drift != 0 || r.Applied {
+		t.Fatalf("in sync: %+v", r)
+	}
+	if r := run(7); r.Drift != -3 || r.Applied || testkit.Int(t, client, k.Unreserved) != 10 {
+		t.Fatalf("first drift must wait for a second run: %+v", r)
+	}
+	if r := run(7); !r.Applied || testkit.Int(t, client, k.Unreserved) != 7 {
+		t.Fatalf("same drift twice: %+v unreserved %d", r, testkit.Int(t, client, k.Unreserved))
+	}
+	run(6)
+	if r := run(5); r.Applied {
+		t.Fatalf("a changed drift restarts the count: %+v", r)
+	}
+	if r := run(5); !r.Applied || testkit.Int(t, client, k.Unreserved) != 5 {
+		t.Fatalf("applied %+v unreserved %d, want 5", r, testkit.Int(t, client, k.Unreserved))
+	}
+
+	testkit.Admit(t, client, k, "w_rc", time.Minute)
+	if r := run(5); r.Drift != 0 {
+		t.Fatalf("reserved units still count as available in core: %+v", r)
+	}
+	if r, _ := s.Reconcile(ctx, k, l.Fence+1, 5); !r.Stale {
+		t.Fatalf("stale fence: %+v", r)
+	}
+}
+
+func TestReconcileReopensSoldOut(t *testing.T) {
+	client := testkit.Valkey(t)
+	s := valkey.New(client)
+	ctx := context.Background()
+	k := testkit.Event(t, client, "evt_reopen", testkit.EventOpts{Available: 1})
+	set(t, client, k.Unreserved, 0)
+	if r := testkit.Tick(t, client, k, testkit.TickArgs{}); r[3] != "closed" {
+		t.Fatalf("tick %v, want closed", r)
+	}
+	l := lead(t, s, k, "task-a")
+	_, _ = s.Reconcile(ctx, k, l.Fence, 4)
+	r, err := s.Reconcile(ctx, k, l.Fence, 4)
+	if err != nil || !r.Applied || !r.Reopened {
+		t.Fatalf("reconcile %+v %v, want reopened", r, err)
+	}
+	if r := testkit.Tick(t, client, k, testkit.TickArgs{}); r[3] != "open" {
+		t.Fatalf("tick %v, want open", r)
+	}
+}

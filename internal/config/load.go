@@ -48,6 +48,9 @@ func Load() *Config {
 		RatePrior:   getDuration("RATE_PRIOR_ORDER_TIME", 6*time.Minute),
 		HoldGrace:   getDuration("HOLD_GRACE", 2*time.Minute),
 
+		ReconcileEvery: getDuration("RECONCILE_EVERY", 10*time.Second),
+		SnapshotMaxAge: getDuration("SNAPSHOT_MAX_AGE", 30*time.Second),
+
 		DeviceTokenTTL:    getDuration("DEVICE_TOKEN_TTL", 30*24*time.Hour),
 		RLDevicePerIP:     getInt("RL_DEVICE_PER_IP", 10),
 		RLDevicePerSubnet: getInt("RL_DEVICE_PER_SUBNET", 100),

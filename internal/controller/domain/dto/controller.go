@@ -72,3 +72,10 @@ type LotteryResult struct {
 	Drawn  int64
 	Left   int64
 }
+
+type ReconcileResult struct {
+	Stale    bool
+	Drift    int64
+	Applied  bool
+	Reopened bool
+}

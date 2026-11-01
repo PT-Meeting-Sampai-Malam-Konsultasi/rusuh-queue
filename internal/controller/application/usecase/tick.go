@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/controller/domain/dto"
+	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/coredocs"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/qkeys"
 )
 
@@ -43,8 +44,24 @@ func (s *ControllerUsecase) tickAll(ctx context.Context) {
 		slog.WarnContext(ctx, "tick: read live events", "error", err)
 		return
 	}
+	due := s.drainNudges()
 	for _, id := range ids {
-		s.tickEvent(ctx, id)
+		s.tickEvent(ctx, id, due[id])
+	}
+}
+
+func (s *ControllerUsecase) drainNudges() map[string]bool {
+	var due map[string]bool
+	for {
+		select {
+		case id := <-s.nudged:
+			if due == nil {
+				due = make(map[string]bool)
+			}
+			due[id] = true
+		default:
+			return due
+		}
 	}
 }
 
@@ -52,7 +69,7 @@ func (s *ControllerUsecase) tickAll(ctx context.Context) {
 // ended leases, admits, writes the frontier and checkpoints. Every script is
 // fenced: after a pause longer than the leader TTL another task holds a newer
 // fence and this task's writes are refused.
-func (s *ControllerUsecase) tickEvent(ctx context.Context, id string) {
+func (s *ControllerUsecase) tickEvent(ctx context.Context, id string, nudged bool) {
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.TickEvery)
 	defer cancel()
 	k := qkeys.For(id)
@@ -87,6 +104,13 @@ func (s *ControllerUsecase) tickEvent(ctx context.Context, id string) {
 		}
 		if p.Stuck > 0 {
 			slog.WarnContext(ctx, "held leases past their end", "event", id, "count", p.Stuck)
+		}
+	}
+
+	if nudged || s.now().Sub(s.reconciled[id]) >= s.cfg.ReconcileEvery {
+		if !s.reconcile(ctx, k, lead.Fence) {
+			s.lose(ctx, id)
+			return
 		}
 	}
 
@@ -129,6 +153,43 @@ func (s *ControllerUsecase) lose(ctx context.Context, id string) {
 		delete(s.checkpointed, id)
 	}
 	delete(s.states, id)
+	delete(s.reconciled, id)
+}
+
+// reconcile corrects unreserved from core's stock snapshot. It returns false on a stale fence.
+func (s *ControllerUsecase) reconcile(ctx context.Context, k qkeys.Event, fence int64) bool {
+	now := s.now()
+	s.reconciled[k.ID] = now
+	raw, err := s.store.CoreStock(ctx, k)
+	if err != nil || raw == nil {
+		slog.WarnContext(ctx, "reconcile: no stock snapshot", "event", k.ID, "error", err)
+		return true
+	}
+	stock, err := coredocs.ParseStock(raw, k.ID)
+	if err != nil {
+		slog.WarnContext(ctx, "reconcile: bad stock snapshot", "event", k.ID, "error", err)
+		return true
+	}
+	age := now.Sub(stock.TS)
+	s.metrics.snapshotAge.Record(ctx, age.Seconds())
+	if age > s.cfg.SnapshotMaxAge {
+		slog.WarnContext(ctx, "reconcile skipped: stock snapshot too old", "event", k.ID, "age", age)
+		return true
+	}
+	r, err := s.store.Reconcile(ctx, k, fence, stock.Available)
+	switch {
+	case err != nil:
+		slog.WarnContext(ctx, "reconcile failed", "event", k.ID, "error", err)
+	case r.Stale:
+		return false
+	case r.Applied:
+		s.metrics.drift.Add(ctx, r.Drift)
+		slog.WarnContext(ctx, "unreserved corrected from core's stock", "event", k.ID, "drift", r.Drift, "reopened", r.Reopened)
+		if r.Reopened {
+			s.states[k.ID] = "open"
+		}
+	}
+	return true
 }
 
 // draw runs the pre-open lottery in batches until the draw list is empty or

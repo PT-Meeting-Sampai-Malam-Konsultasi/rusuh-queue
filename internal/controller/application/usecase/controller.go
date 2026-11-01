@@ -108,6 +108,10 @@ func (s *ControllerUsecase) follow(ctx context.Context, id string, syncs chan<- 
 		case syncs <- id:
 		default: // a sync is already queued; it will read the latest documents
 		}
+		select {
+		case s.nudged <- id:
+		default:
+		}
 	})
 }
 

@@ -416,7 +416,8 @@ reasons in the 14 advance-rule cases) and HTTP tests (MISSED on me, rejoin seq, 
 
 - [x] Consumer group, `rusuh_release_v1`, retry of idle entries (`XPENDING` + `XCLAIM`, which also gives the delivery
       count), dead-letter (1 Nov).
-- [ ] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard; TTL freeze handling (D-11).
+- [x] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard (1 Nov).
+- [ ] TTL freeze handling (D-11): deferred until `core` builds `adminTtlFreeze`.
 - [ ] `cmd/fakecore` for tests until `core` is ready: publishes `stream:booking` events, writes `core:{evt}:stock` / `sale` and nudges. Then the joint test with Backend 2.
 
 **Verify:** the same event delivered 5 times changes state once; `held` after a purge gives the right `unreserved`;

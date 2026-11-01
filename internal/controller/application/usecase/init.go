@@ -25,7 +25,10 @@ type ControllerUsecase struct {
 	leading      map[string]int64
 	checkpointed map[string]time.Time
 	states       map[string]string
-	metrics      metrics
+	reconciled   map[string]time.Time
+	// nudged carries core:{evt}:changed nudges from the subscriptions to the tick goroutine.
+	nudged  chan string
+	metrics metrics
 }
 
 // New builds the concrete Service implementation for controller.
@@ -36,6 +39,8 @@ func NewController(cfg entity.Config, store outbound.IControllerStore, checkpoin
 		leading:      map[string]int64{},
 		checkpointed: map[string]time.Time{},
 		states:       map[string]string{},
+		reconciled:   map[string]time.Time{},
+		nudged:       make(chan string, 256),
 		metrics:      newMetrics(),
 	}
 }

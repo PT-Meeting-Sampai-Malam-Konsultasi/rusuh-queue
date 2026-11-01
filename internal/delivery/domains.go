@@ -79,6 +79,8 @@ func (s *Server) wireDomains(cfg *config.Config, mux *http.ServeMux, ipResolver 
 	controllerConfig.HistWindow = cfg.RateWindow
 	controllerConfig.PriorOrderTime = cfg.RatePrior
 	controllerConfig.InviteWindow = cfg.MissWindow
+	controllerConfig.ReconcileEvery = cfg.ReconcileEvery
+	controllerConfig.SnapshotMaxAge = cfg.SnapshotMaxAge
 	controller := NewController(ControllerDeps{
 		Config:   controllerConfig,
 		DB:       s.db,

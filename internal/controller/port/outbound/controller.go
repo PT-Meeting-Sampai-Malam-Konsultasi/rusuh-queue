@@ -28,6 +28,8 @@ type IControllerStore interface {
 	Resign(ctx context.Context, k qkeys.Event, task string) error
 	Purge(ctx context.Context, k qkeys.Event, fence int64, grace time.Duration, limit int) (dto.PurgeResult, error)
 	Tick(ctx context.Context, k qkeys.Event, a dto.TickArgs) (dto.TickResult, error)
+	CoreStock(ctx context.Context, k qkeys.Event) ([]byte, error)
+	Reconcile(ctx context.Context, k qkeys.Event, fence, available int64) (dto.ReconcileResult, error)
 	// Lottery numbers up to batch devices of the pre-open draw list.
 	Lottery(ctx context.Context, k qkeys.Event, fence int64, batch int) (dto.LotteryResult, error)
 	// Subscribe blocks until ctx ends, calling onEvent per message and per (re)subscribe.

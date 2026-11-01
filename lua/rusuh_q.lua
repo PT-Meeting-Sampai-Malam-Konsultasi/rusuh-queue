@@ -605,6 +605,38 @@ local function release_v1(keys, args)
   return 'APPLIED'
 end
 
+-- rusuh_reconcile_v1: correct unreserved from core's stock snapshot (NFR-04). PostgreSQL
+-- counts reserved units as available, so the target is available - resv. A drift is
+-- applied only when the same drift shows on two runs in a row: a snapshot can lag a
+-- booking event still in flight. A sold-out queue reopens when units come back before endsAt.
+-- KEYS: cfg, unreserved, resv, fence; ARGV: fence, available
+-- Returns {status, drift, applied (0|1), reopened (0|1)}; status OK | STALE | NO_EVENT.
+local function reconcile_v1(keys, args)
+  local cfg, unres, resv, fence = keys[1], keys[2], keys[3], keys[4]
+  if server.call('GET', fence) ~= args[1] then return {'STALE', 0, 0, 0} end
+  local c = server.call('HMGET', cfg, 'state', 'reason', 'endsAt', 'rcDrift')
+  if not c[1] then return {'NO_EVENT', 0, 0, 0} end
+  local target = math.max(0, int(args[2]) - int(server.call('GET', resv)))
+  local drift = target - int(server.call('GET', unres))
+  if drift == 0 then
+    server.call('HDEL', cfg, 'rcDrift')
+    return {'OK', 0, 0, 0}
+  end
+  if c[4] ~= fmt(drift) then
+    server.call('HSET', cfg, 'rcDrift', fmt(drift))
+    return {'OK', drift, 0, 0}
+  end
+  server.call('SET', unres, target, 'KEEPTTL')
+  server.call('HDEL', cfg, 'rcDrift')
+  local reopened = 0
+  if c[1] == 'closed' and c[2] == 'sold_out' and target > 0 and now_ms() < int(c[3]) then
+    server.call('HSET', cfg, 'state', 'open')
+    server.call('HDEL', cfg, 'reason')
+    reopened = 1
+  end
+  return {'OK', drift, 1, reopened}
+end
+
 server.register_function('rusuh_lead_v1', lead_v1)
 server.register_function('rusuh_resign_v1', resign_v1)
 server.register_function('rusuh_purge_v1', purge_v1)
@@ -612,3 +644,4 @@ server.register_function('rusuh_tick_v1', tick_v1)
 server.register_function('rusuh_claim_v1', claim_v1)
 server.register_function('rusuh_lottery_v1', lottery_v1)
 server.register_function('rusuh_release_v1', release_v1)
+server.register_function('rusuh_reconcile_v1', reconcile_v1)

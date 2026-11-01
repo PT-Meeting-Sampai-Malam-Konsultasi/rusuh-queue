@@ -39,6 +39,11 @@ type Config struct {
 	// DrawBatch devices until the list is empty or DrawBudget is spent.
 	DrawBatch  int
 	DrawBudget time.Duration
+	// ReconcileEvery: unreserved is checked against core's stock on every
+	// core:{evt}:changed nudge and at least this often; a snapshot older than
+	// SnapshotMaxAge is not trusted.
+	ReconcileEvery time.Duration
+	SnapshotMaxAge time.Duration
 }
 
 func DefaultConfig() Config {
@@ -54,6 +59,8 @@ func DefaultConfig() Config {
 		PriorOrderTime:  6 * time.Minute,
 		DrawBatch:       2000,
 		DrawBudget:      300 * time.Millisecond,
+		ReconcileEvery:  10 * time.Second,
+		SnapshotMaxAge:  30 * time.Second,
 	}
 }
 

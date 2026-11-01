@@ -41,6 +41,9 @@ type Config struct {
 	RatePrior   time.Duration // average claim-to-paid time for the warm-up speed guess; 0 = off
 	HoldGrace   time.Duration // a held slot is kept this long past the payment deadline
 
+	ReconcileEvery time.Duration // unreserved is checked against core's stock at least this often
+	SnapshotMaxAge time.Duration // an older core:{evt}:stock is not trusted
+
 	DeviceTokenTTL    time.Duration
 	RLDevicePerIP     int64 // registrations per minute per IP
 	RLDevicePerSubnet int64 // registrations per minute per /24 (IPv4) or /48 (IPv6)
