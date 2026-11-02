@@ -1,6 +1,6 @@
 # Multi-arch build (linux/amd64 for the lab, linux/arm64 for ECS Fargate Graviton):
 #   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/<org>/rusuh-queue:<sha> .
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

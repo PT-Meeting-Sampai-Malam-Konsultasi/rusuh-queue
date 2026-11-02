@@ -133,7 +133,7 @@ rusuh-queue/
 └── Makefile                        # run, test, lint, vuln, gen, migrate-*, deps-up, mock-api, image, ci
 ```
 
-Libraries: **Go 1.26** (`toolchain go1.26.10`; Go 1.25.10 had reachable standard-library vulnerabilities), std
+Libraries: **Go 1.27** (`toolchain go1.27.3`, the latest patch with the current standard-library CVE fixes), std
 `net/http` routing (Go 1.22 method patterns), `valkey-go`, `pgx/v5` + `sqlc`, `oapi-codegen` (types),
 `golang-jwt/jwt/v5` (EdDSA, M1), OpenTelemetry 1.47 through `github.com/goleggo/observer` v0.1.4,
 `testcontainers-go`, `pgregory.net/rapid` for property tests. Tools run with `go run …@version`, never as `tool`
@@ -499,5 +499,5 @@ a drill; runbooks reviewed by Backend 2.
 - ADR-0016 (proposed): key + nudge over sharded pub/sub between services (D-1, D-2, D-9, D-11); amends ADR-0013.
 - Solution Architecture: a "How `core` and `queue` interact" section (the four links above); live doc and PDF too.
 - Customer journey LG15: account attach by re-join, not by `core` writing `q:*` (D-10).
-- Solution Architecture technology table: queue service is Go 1.26 + std `net/http` (not `chi`), scaffolded with justgo.
+- Solution Architecture technology table: queue service is Go 1.27 + std `net/http` (not `chi`), scaffolded with justgo.
 - Fixed 24 Oct: `Frontier.ts` description in `openapi.yaml` was unquoted and parsed as an extra key.

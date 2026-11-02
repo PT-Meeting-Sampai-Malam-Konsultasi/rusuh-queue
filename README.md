@@ -64,5 +64,5 @@ make mock-api       # Prism on http://localhost:4010 (spec paths, no /v1 prefix)
 | Everything CI runs | `make ci` |
 | Images | `make image` (buildx, amd64 + arm64) |
 
-Requires Go 1.26 (the `toolchain` line downloads it), Docker (integration tests start Valkey and PostgreSQL
+Requires Go 1.27 (the `toolchain` line downloads go1.27.3), Docker (integration tests start Valkey and PostgreSQL
 containers), `sqlc`, `golangci-lint` and `mockgen`.

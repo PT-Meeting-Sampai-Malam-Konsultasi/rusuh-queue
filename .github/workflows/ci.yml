@@ -20,9 +20,8 @@ jobs:
         run: make fmt-check
       - name: vet
         run: go vet ./...
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.12.2  # built with Go 1.26; v2.4.0 (Go 1.25) cannot lint a go 1.26 module
+      - name: golangci-lint
+        run: make lint  # built from source with the module's Go, so it can lint a go 1.27 module
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - name: test
