@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/goleggo/observer/middleware/nethttp"
 	vk "github.com/valkey-io/valkey-go"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
@@ -70,8 +71,12 @@ func (s *Server) wire(cfg *config.Config) error {
 	if err := s.wireDomains(cfg, mux, adminMux, ipResolver); err != nil {
 		return err
 	}
-	s.Handler = httpmw.CORS(cfg.CORSOrigins, mux)
-	s.AdminHandler = adminMux
+	var obsOpts []nethttp.Option
+	if !cfg.RequestLog {
+		obsOpts = append(obsOpts, nethttp.WithoutRequestLog())
+	}
+	s.Handler = nethttp.Handler(httpmw.CORS(cfg.CORSOrigins, mux), append(obsOpts, nethttp.WithSkip("/healthz", "/readyz"))...)
+	s.AdminHandler = nethttp.Handler(adminMux, obsOpts...)
 	return nil
 }
 

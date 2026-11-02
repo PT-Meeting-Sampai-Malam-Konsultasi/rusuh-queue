@@ -61,4 +61,8 @@ type Config struct {
 	OtelExporterType    string
 	OtelEndpoint        string
 	OtelMetricsExporter string // overrides OtelExporterType for metrics; none turns them off
+	OtelTracesExporter  string // overrides OtelExporterType for traces
+	OtelLogsExporter    string // none (default) keeps logs on stdout only; otlp also ships them to the collector
+	// RequestLog writes one log line per HTTP request. Spans and HTTP metrics are recorded either way.
+	RequestLog bool
 }

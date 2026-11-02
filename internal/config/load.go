@@ -66,6 +66,9 @@ func Load() *Config {
 		OtelExporterType:    getEnv("OTEL_EXPORTER_TYPE", "stdout"),
 		OtelEndpoint:        getEnv("OTEL_ENDPOINT", "localhost:4318"),
 		OtelMetricsExporter: os.Getenv("OTEL_METRICS_EXPORTER"),
+		OtelTracesExporter:  os.Getenv("OTEL_TRACES_EXPORTER"),
+		OtelLogsExporter:    getEnv("OTEL_LOGS_EXPORTER", "none"),
+		RequestLog:          getBool("REQUEST_LOG", true),
 	}
 }
 
@@ -110,4 +113,17 @@ func getInt(key string, fallback int64) int64 {
 		return fallback
 	}
 	return n
+}
+
+func getBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Printf("Invalid %s=%q, using %t", key, v, fallback)
+		return fallback
+	}
+	return b
 }

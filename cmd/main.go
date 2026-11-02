@@ -10,10 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goleggo/observer"
 	obsconfig "github.com/goleggo/observer/config"
-	obslog "github.com/goleggo/observer/log"
-	obsmetrics "github.com/goleggo/observer/metrics"
-	obstrace "github.com/goleggo/observer/trace"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/delivery"
@@ -22,39 +20,22 @@ import (
 func main() {
 	cfg := config.Load()
 
-	slog.SetDefault(obslog.SetupLogger(obsconfig.LogConfig{Level: cfg.LogLevel, Format: cfg.LogFormat}))
-
 	ctx := context.Background()
-	tp, err := obstrace.SetupTrace(ctx, obsconfig.OTELConfig{
-		ServiceName:  "rusuh-queue",
-		ExporterType: cfg.OtelExporterType,
-		Endpoint:     cfg.OtelEndpoint,
-		Insecure:     true,
+	shutdownObs, err := observer.Setup(ctx, obsconfig.Config{
+		Log: obsconfig.LogConfig{Level: cfg.LogLevel, Format: cfg.LogFormat},
+		OTEL: obsconfig.OTELConfig{
+			ServiceName:     "rusuh-queue",
+			ExporterType:    cfg.OtelExporterType,
+			TracesExporter:  cfg.OtelTracesExporter,
+			MetricsExporter: cfg.OtelMetricsExporter,
+			LogsExporter:    cfg.OtelLogsExporter,
+			Endpoint:        cfg.OtelEndpoint,
+			Insecure:        true,
+		},
 	})
 	if err != nil {
-		slog.Error("Failed to set up tracing", "error", err)
-	} else if tp != nil { // OTEL_EXPORTER_TYPE=none gives no provider
-		defer func() {
-			if err := tp.Shutdown(ctx); err != nil {
-				slog.Error("Failed to shut down tracer provider", "error", err)
-			}
-		}()
-	}
-	mp, err := obsmetrics.SetupMetrics(ctx, obsconfig.OTELConfig{
-		ServiceName:     "rusuh-queue",
-		ExporterType:    cfg.OtelExporterType,
-		MetricsExporter: cfg.OtelMetricsExporter,
-		Endpoint:        cfg.OtelEndpoint,
-		Insecure:        true,
-	})
-	if err != nil {
-		slog.Error("Failed to set up metrics", "error", err)
-	} else if mp != nil {
-		defer func() {
-			if err := mp.Shutdown(ctx); err != nil {
-				slog.Error("Failed to shut down meter provider", "error", err)
-			}
-		}()
+		slog.Error("Failed to set up observability", "error", err)
+		os.Exit(1)
 	}
 	slog.Info("Starting rusuh-queue in " + cfg.Env + " mode...")
 
@@ -105,6 +86,13 @@ func main() {
 	// 4. Close Valkey and the database pool after the workers finished.
 	app.Close()
 	slog.Info("Server exiting")
+
+	// 5. Flush telemetry last, so the shutdown spans and logs above are exported.
+	ctxFlush, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFlush()
+	if err := shutdownObs(ctxFlush); err != nil {
+		slog.Error("Telemetry flush failed", "error", err)
+	}
 }
 
 // newServer has no WriteTimeout: the SSE route (ADR-0015) sets per-write deadlines itself.
