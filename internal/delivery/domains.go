@@ -60,10 +60,11 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 
 	RegisterQueue(mux, QueueDeps{
 		Config: queueentity.Config{
-			JoinPerDevice:  ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
-			ClaimPerDevice: ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
-			OrderWindow:    cfg.OrderWindow,
-			MissWindow:     cfg.MissWindow,
+			JoinPerDevice:     ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
+			ClaimPerDevice:    ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
+			OrderWindow:       cfg.OrderWindow,
+			MissWindow:        cfg.MissWindow,
+			TransfersPerEvent: cfg.PlaceTransfersPerEvent,
 		},
 		Valkey:  s.valkey,
 		Signer:  keys,

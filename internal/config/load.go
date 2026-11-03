@@ -40,9 +40,10 @@ func Load() *Config {
 		TrustedProxyCIDRs: getList("TRUSTED_PROXY_CIDRS"),
 		CORSOrigins:       getList("CORS_ORIGINS"),
 
-		CoreJWKSURL:      os.Getenv("CORE_JWKS_URL"),
-		RLJoinPerDevice:  getInt("RL_JOIN_PER_DEVICE", 30),
-		RLClaimPerDevice: getInt("RL_CLAIM_PER_DEVICE", 60),
+		CoreJWKSURL:            os.Getenv("CORE_JWKS_URL"),
+		RLJoinPerDevice:        getInt("RL_JOIN_PER_DEVICE", 30),
+		PlaceTransfersPerEvent: getInt("PLACE_TRANSFERS_PER_EVENT", 1),
+		RLClaimPerDevice:       getInt("RL_CLAIM_PER_DEVICE", 60),
 
 		Tick:        getDuration("TICK", time.Second),
 		OrderWindow: getDuration("ORDER_WINDOW", 5*time.Minute),

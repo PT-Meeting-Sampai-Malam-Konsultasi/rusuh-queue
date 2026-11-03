@@ -241,6 +241,70 @@ server.register_function('rusuh_join_v1', join_v1)
 server.register_function({function_name = 'rusuh_place_v1', callback = place_v1, flags = {'no-writes'}})
 server.register_function('rusuh_leave_v1', leave_v1)
 
+-- rusuh_transfer_v1: move the account's live place to this device (D-13, FAQ 9.10).
+-- The user logged in on device B while the account's place is live on device A.
+-- The place keeps its seq and its turn time; A's entry becomes "m:<seq>" (or
+-- "m:pre"), so A's queue token gets MOVED. A claimed place ("x:") does not move,
+-- because the lease and the admission token are bound to A. If B has its own
+-- live place, the better one is kept (a number over the draw, the lower number).
+-- KEYS: cfg, devs, pre, accts, served, hist, xfers
+-- ARGV: device B, user, miss window ms, transfers allowed per account per event
+-- Returns the join_v1 reply {status, seq, attached, endsAtMs, served, opensAtMs, turnEndsMs, nowMs};
+--   status OK | PRE (moved) | NOTHING (no live place elsewhere: run a normal join)
+--   | LIMIT (transfer cap reached) | DEVICE_OTHER_ACCOUNT | CLOSED | NO_EVENT
+local function transfer_v1(keys, args)
+  local cfg, devs, pre, accts, servedk, hist, xfers = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6], keys[7]
+  local device, user, window, cap = args[1], args[2], int(args[3]), int(args[4])
+
+  local c = server.call('HMGET', cfg, 'state', 'endsAt', 'opensAt')
+  local state = c[1]
+  if not state then return {'NO_EVENT', 0, 0, 0, 0, 0, 0, 0} end
+  local ends, opens = int(c[2]), int(c[3])
+  local now, served = now_ms(), int(server.call('GET', servedk))
+  local function reply(status, seq, attached, turn_ends)
+    return {status, seq, attached, ends, served, opens, turn_ends, now}
+  end
+  if state == 'closed' then return reply('CLOSED', 0, 0, 0) end
+
+  local dev_user = server.call('HGET', accts, 'd:' .. device)
+  if dev_user and dev_user ~= user then return reply('DEVICE_OTHER_ACCOUNT', 0, 0, 0) end
+  local owner = server.call('HGET', accts, user)
+  if not owner or owner == device then return reply('NOTHING', 0, 0, 0) end
+  local theirs = server.call('HGET', devs, owner)
+  if not (theirs == 'pre' or (theirs and live_place(theirs, hist, cfg, served, now, window))) then
+    return reply('NOTHING', 0, 0, 0)
+  end
+  if int(server.call('HGET', xfers, user)) >= cap then return reply('LIMIT', 0, 0, 0) end
+
+  -- B's own live place, if any, competes with the moved one.
+  local mine = server.call('HGET', devs, device)
+  if not (mine == 'pre' or (mine and live_place(mine, hist, cfg, served, now, window))) then mine = nil end
+  local keep = theirs
+  if mine and mine ~= 'pre' and (theirs == 'pre' or tonumber(mine) < tonumber(theirs)) then keep = mine end
+
+  -- End the place on A.
+  if theirs == 'pre' then server.call('SREM', pre, owner) end
+  server.call('HSET', devs, owner, 'm:' .. theirs)
+  server.call('HDEL', accts, 'd:' .. owner)
+
+  -- Give B the kept place.
+  if keep == 'pre' then
+    server.call('SADD', pre, device)
+    ensure_expiry(pre, cfg)
+  elseif mine == 'pre' then
+    server.call('SREM', pre, device)
+  end
+  server.call('HSET', devs, device, keep)
+  server.call('HSET', accts, user, device, 'd:' .. device, user)
+  server.call('HINCRBY', xfers, user, 1)
+  for _, k in ipairs({devs, accts, xfers}) do ensure_expiry(k, cfg) end
+
+  if keep == 'pre' then return reply('PRE', 0, 1, 0) end
+  local seq = tonumber(keep)
+  return reply('OK', seq, 1, turn(hist, cfg, seq, served, now, window))
+end
+server.register_function('rusuh_transfer_v1', transfer_v1)
+
 
 -- A lease is "device|seq|units|status|endMs"; status is reserved | held | purged.
 local function parse_lease(v)

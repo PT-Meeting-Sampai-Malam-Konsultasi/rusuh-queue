@@ -32,9 +32,10 @@ type Config struct {
 	CORSOrigins       []string
 
 	// CoreJWKSURL: core's public keys for access tokens (D-4), e.g. https://<core>/.well-known/jwks.json
-	CoreJWKSURL      string
-	RLJoinPerDevice  int64 // joins per minute per device
-	RLClaimPerDevice int64 // claims per minute per device
+	CoreJWKSURL            string
+	RLJoinPerDevice        int64 // joins per minute per device
+	PlaceTransfersPerEvent int64 // moves of a place to another device per account per event (D-13); 0 = off
+	RLClaimPerDevice       int64 // claims per minute per device
 
 	// Admission (IMPLEMENTATION_PLAN.md "Admission controller").
 	Tick        time.Duration // controller tick

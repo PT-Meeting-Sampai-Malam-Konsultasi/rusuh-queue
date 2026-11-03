@@ -96,6 +96,7 @@ Each has a recommendation, so work can start; confirm with Backend 2 (Node.js) b
 | D-9 | How does Home learn that the queue is `closed` (FR-03)? | `core` catalog reads `q:{evt}:frontier` when it rebuilds the Home model, or subscribes to `q:{evt}:tick`. `queue` documents the frontier JSON as a contract. |
 | D-10 | Who attaches the account to a place after login? The journey has `core` auth writing `q:{evt}:acct:{user}`, which breaks key ownership. | The app calls `joinQueue` again with its access token; `queue` attaches the account (idempotent). Fix journey node LG15. |
 | D-12 | How long does an admitted device have to claim its turn? (HiFi 26 Oct: "60 detik untuk masuk") | **60 s** (`MISS_WINDOW`), was 5 min. Clients claim automatically at the turn. The D-7 invitation window follows it; `RATE_WINDOW` (5 min) keeps the history for `ratePerMin`. A missed, used or left place is over: join gives a new number at the back. |
+| D-13 | Can a logged-in user move their place to another device (log out on A, log in on B, keep `seq`)? (asked 1 Nov, decided 3 Nov) | **Allowed for now, with the risks below accepted.** On 409 `ACCOUNT_HAS_PLACE_ELSEWHERE` the app asks the user, then sends `joinQueue` with `{"takeOver": true}`. `rusuh_transfer_v1` moves a live, unclaimed place with the same `seq` and turn time. A gets 410 `MOVED`. At most `PLACE_TRANSFERS_PER_EVENT` (default 1, 0 = off) moves per account per event. Reverses the device-only rule of QnA 14 Oct; to confirm with the owner. FAQ 9.10. |
 | D-11 | Does the TTL freeze affect `queue`? | Yes, for admitted users without a hold: on `core:incident` = frozen, the controller stops purging and pushes lease ends forward by the frozen time when it lifts. Held leases already wait for `core`'s events. |
 
 ## Repository layout
@@ -488,6 +489,7 @@ a drill; runbooks reviewed by Backend 2.
 | Lua bugs oversell or lose units | Every function behind race and property tests; reconcile as the backstop; PostgreSQL `CHECK` as the last guard |
 | Hot key on one event at 15,000 joins/s | One shard per busy event; measure Valkey ops/s in the spike test |
 | SSE behaves differently through CloudFront | Proven on Cloudflare in the lab; re-test in AWS staging; `streamFrom = 0` |
+| Moving a place to another device (D-13) is abused: a place is resold by logging in on the buyer's device, or a stolen access token moves someone's place | Accepted for now. Limits: one move per account per event (`PLACE_TRANSFERS_PER_EVENT`); the OTP goes to the owner's email; bookings are tied to the account; attendee NIK is checked at the gate; access tokens last 15 min; every move is logged ("place moved to another device"). If abuse shows: set `PLACE_TRANSFERS_PER_EVENT=0` (no deploy), or require a recent `auth_time` on `takeOver` |
 | H1 feedback repeats (security, transactions, alerting, runbooks) | Security tests, idempotent scripts, alerts and runbooks are tasks in M1, M4 and M6, not extras |
 
 ## Doc follow-ups (in `rusuh-documentation`, uncommitted)

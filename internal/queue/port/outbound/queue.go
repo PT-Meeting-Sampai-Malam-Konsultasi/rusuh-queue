@@ -16,6 +16,8 @@ import (
 type IQueueStore interface {
 	// Join and Place take the miss window: a missed place is over (join gives a new one).
 	Join(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration) (dto.JoinResult, error)
+	// Transfer moves the account's live place on another device to deviceID (D-13).
+	Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error)
 	Place(ctx context.Context, k qkeys.Event, deviceID string, missWindow time.Duration) (dto.PlaceView, error)
 	// Leave ends the device's place; found is false for an unknown event.
 	Leave(ctx context.Context, k qkeys.Event, deviceID string) (found bool, err error)

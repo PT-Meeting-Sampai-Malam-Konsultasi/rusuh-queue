@@ -79,6 +79,8 @@ func queueConfig(orderWindow, missWindow time.Duration) entity.Config {
 		ClaimPerDevice: ratelimit.Rule{Scope: "claim:dev", Limit: 60, Window: time.Minute},
 		OrderWindow:    orderWindow,
 		MissWindow:     missWindow,
+		// D-13: one move of a place to another device per account per event.
+		TransfersPerEvent: 1,
 	}
 }
 

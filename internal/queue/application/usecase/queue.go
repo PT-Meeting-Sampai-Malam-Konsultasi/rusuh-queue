@@ -33,7 +33,7 @@ func (s *QueueUsecase) Join(ctx context.Context, in entity.JoinInput) (*entity.P
 		return nil, &entity.RateLimitedError{RetryAfter: r.RetryAfter}
 	}
 
-	res, err := s.store.Join(ctx, qkeys.For(in.EventID), in.DeviceID, in.UserID, s.cfg.MissWindow)
+	res, err := s.join(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +47,8 @@ func (s *QueueUsecase) Join(ctx context.Context, in entity.JoinInput) (*entity.P
 		return nil, entity.ErrAccountElsewhere
 	case dto.JoinDeviceOtherAccount:
 		return nil, entity.ErrDeviceOtherAccount
+	case dto.JoinTransferLimit:
+		return nil, entity.ErrTransferLimit
 	case dto.JoinOK, dto.JoinPre:
 	default:
 		return nil, fmt.Errorf("queue: unknown join status %q", res.Status)
@@ -60,6 +62,24 @@ func (s *QueueUsecase) Join(ctx context.Context, in entity.JoinInput) (*entity.P
 		seq = &res.Seq
 	}
 	return s.place(in.EventID, in.DeviceID, state, seq, res.Attached, res.EndsAt, res.Turn)
+}
+
+// join runs the join script, or first the transfer script when a logged-in
+// caller asks to take over the account's place from another device (D-13).
+// A guest, or moving turned off, gets a normal join (and 409 if the account
+// holds a place elsewhere).
+func (s *QueueUsecase) join(ctx context.Context, in entity.JoinInput) (dto.JoinResult, error) {
+	k := qkeys.For(in.EventID)
+	if in.TakeOver && in.UserID != "" && s.cfg.TransfersPerEvent > 0 {
+		res, err := s.store.Transfer(ctx, k, in.DeviceID, in.UserID, s.cfg.MissWindow, s.cfg.TransfersPerEvent)
+		if err != nil || res.Status != dto.JoinNothingToMove {
+			if err == nil && (res.Status == dto.JoinOK || res.Status == dto.JoinPre) {
+				slog.InfoContext(ctx, "place moved to another device", "event", in.EventID)
+			}
+			return res, err
+		}
+	}
+	return s.store.Join(ctx, k, in.DeviceID, in.UserID, s.cfg.MissWindow)
 }
 
 func (s *QueueUsecase) MyPlace(ctx context.Context, eventID, deviceID string, tokenSeq int64) (*entity.Place, error) {
@@ -80,6 +100,8 @@ func (s *QueueUsecase) MyPlace(ctx context.Context, eventID, deviceID string, to
 	switch {
 	case v.Value == "pre":
 		return s.place(eventID, deviceID, v.State, nil, v.Attached, v.EndsAt, v.Turn)
+	case strings.HasPrefix(v.Value, "m:"):
+		return nil, entity.ErrMoved
 	case v.Value == "" || strings.HasPrefix(v.Value, "x:"):
 		return nil, entity.ErrPlaceExpired
 	case v.Missed:
@@ -160,7 +182,7 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 	case dto.ClaimClosed:
 		return nil, entity.ErrClosed
 	case dto.ClaimExpired:
-		return nil, entity.ErrPlaceExpired
+		return nil, s.expiredOrMoved(ctx, eventID, deviceID)
 	case dto.ClaimNotYet:
 		return nil, entity.ErrNotYet
 	case dto.ClaimMissed:
@@ -196,6 +218,16 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 		ExpiresAt:     res.EndsAt,
 		ServerNow:     res.ServerNow,
 	}, nil
+}
+
+// expiredOrMoved tells a moved place (MOVED) from one that ended (EXPIRED) after
+// a refused claim. Only refusals pay for this extra read.
+func (s *QueueUsecase) expiredOrMoved(ctx context.Context, eventID, deviceID string) error {
+	v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.cfg.MissWindow)
+	if err == nil && strings.HasPrefix(v.Value, "m:") {
+		return entity.ErrMoved
+	}
+	return entity.ErrPlaceExpired
 }
 
 // placeSeq reads the seq of a numbered ("57") or used ("x:57") place; 0 otherwise.

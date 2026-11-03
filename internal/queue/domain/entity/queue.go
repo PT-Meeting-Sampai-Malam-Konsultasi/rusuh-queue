@@ -19,6 +19,9 @@ type Config struct {
 	// ("60 detik untuk masuk"); the place is then over and join gives a new one.
 	// Must not exceed the controller's HistWindow (RATE_WINDOW).
 	MissWindow time.Duration
+	// TransfersPerEvent is how often an account may move its place to another
+	// device in one event (D-13, env PLACE_TRANSFERS_PER_EVENT); 0 turns moving off.
+	TransfersPerEvent int64
 }
 
 // RateLimitedError: the device joins too often (429).
@@ -51,20 +54,26 @@ type Admission struct {
 	ServerNow     time.Time
 }
 
-// JoinInput is one joinQueue call. UserID is empty for a guest.
+// JoinInput is one joinQueue call. UserID is empty for a guest. TakeOver asks to
+// move the account's live place from another device to this one (D-13).
 type JoinInput struct {
 	EventID  string
 	DeviceID string
 	UserID   string
+	TakeOver bool
 }
 
 var (
-	ErrUnknownEvent        = errors.New("queue: unknown event")
-	ErrClosed              = errors.New("queue: closed, sold out")
-	ErrAccountElsewhere    = errors.New("queue: account holds a place on another device")
-	ErrDeviceOtherAccount  = errors.New("queue: this place belongs to another account")
-	ErrPlaceExpired        = errors.New("queue: place used or expired; rejoin")
-	ErrPlaceMismatch       = errors.New("queue: queue token does not match the device's place")
+	ErrUnknownEvent       = errors.New("queue: unknown event")
+	ErrClosed             = errors.New("queue: closed, sold out")
+	ErrAccountElsewhere   = errors.New("queue: account holds a place on another device")
+	ErrDeviceOtherAccount = errors.New("queue: this place belongs to another account")
+	ErrPlaceExpired       = errors.New("queue: place used or expired; rejoin")
+	ErrPlaceMismatch      = errors.New("queue: queue token does not match the device's place")
+	// ErrMoved: the account moved this place to another device (D-13).
+	ErrMoved = errors.New("queue: place moved to another device")
+	// ErrTransferLimit: the account already moved its place as often as allowed.
+	ErrTransferLimit       = errors.New("queue: place already moved to another device")
 	ErrFrontierUnavailable = errors.New("queue: frontier not written yet")
 
 	// Claim refusals (FR-08). ErrPlaceExpired and ErrClosed are also returned.

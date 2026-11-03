@@ -14,6 +14,9 @@ const (
 	JoinNoEvent            JoinStatus = "NO_EVENT"
 	JoinAccountElsewhere   JoinStatus = "ACCOUNT_ELSEWHERE"
 	JoinDeviceOtherAccount JoinStatus = "DEVICE_OTHER_ACCOUNT"
+	// rusuh_transfer_v1 only (D-13).
+	JoinNothingToMove JoinStatus = "NOTHING" // no live place on another device: run a normal join
+	JoinTransferLimit JoinStatus = "LIMIT"   // the account already moved its place as often as allowed
 )
 
 // Turn is what the client needs around the place: served when answering, the
@@ -69,7 +72,7 @@ type ClaimResult struct {
 type PlaceView struct {
 	Found    bool   // the event exists
 	State    string // cfg.state
-	Value    string // devs[device]: "<seq>" | "pre" | "x:<seq>" | "" (no place)
+	Value    string // devs[device]: "<seq>" | "pre" | "x:<seq>" | "m:<seq>" / "m:pre" (moved) | "" (no place)
 	Attached bool
 	EndsAt   time.Time
 	Missed   bool // reached and not claimed within the miss window

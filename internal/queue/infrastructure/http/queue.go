@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
 	"math/rand/v2"
@@ -57,7 +58,20 @@ func (h *QueueHandler) JoinQueue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	place, err := h.service.Join(r.Context(), entity.JoinInput{EventID: r.PathValue("eventId"), DeviceID: deviceID, UserID: userID})
+	var body api.JoinQueueJSONRequestBody
+	if r.ContentLength != 0 {
+		dec := json.NewDecoder(stdhttp.MaxBytesReader(w, r.Body, joinMaxBody))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			problem.Write(w, stdhttp.StatusBadRequest, api.ErrorCodeVALIDATIONFAILED, "Invalid body", err.Error())
+			return
+		}
+	}
+
+	place, err := h.service.Join(r.Context(), entity.JoinInput{
+		EventID: r.PathValue("eventId"), DeviceID: deviceID, UserID: userID,
+		TakeOver: body.TakeOver != nil && *body.TakeOver,
+	})
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -170,6 +184,12 @@ func (h *QueueHandler) writeError(w stdhttp.ResponseWriter, r *stdhttp.Request, 
 		problem.Write(w, stdhttp.StatusGone, api.ErrorCodeQUEUECLOSED, "Sold out", "The queue is closed because every ticket is sold")
 	case errors.Is(err, entity.ErrAccountElsewhere):
 		problem.Write(w, stdhttp.StatusConflict, api.ErrorCodeACCOUNTHASPLACEELSEWHERE, "Already queueing on another device", "")
+	case errors.Is(err, entity.ErrTransferLimit):
+		problem.Write(w, stdhttp.StatusConflict, api.ErrorCodeACCOUNTHASPLACEELSEWHERE, "Already queueing on another device",
+			"This account already moved its place once in this event; leave the queue on the other device first")
+	case errors.Is(err, entity.ErrMoved):
+		problem.Write(w, stdhttp.StatusGone, api.ErrorCodeMOVED, "Your place moved to another device",
+			"Your account took this place to another device; continue there or join again here at the back")
 	case errors.Is(err, entity.ErrDeviceOtherAccount):
 		problem.Write(w, stdhttp.StatusConflict, api.ErrorCodeACCOUNTHASPLACEELSEWHERE, "This place belongs to another account", "")
 	case errors.Is(err, entity.ErrPlaceExpired):
@@ -211,6 +231,9 @@ func writePlace(w stdhttp.ResponseWriter, p *entity.Place) {
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+// joinMaxBody bounds joinQueue's optional body ({"takeOver": true}).
+const joinMaxBody = 1 << 10
 
 // keysRetryAfter is the Retry-After (seconds) when an issuer's keys are unavailable.
 const keysRetryAfter = 5

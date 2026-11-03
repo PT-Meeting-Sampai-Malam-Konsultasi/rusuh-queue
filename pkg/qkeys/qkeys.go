@@ -31,8 +31,9 @@ type Event struct {
 	Cfg        string // hash: state, maxSlots, rateCap, streamFrom, opensAt, endsAt
 	Seq        string // last issued sequence number
 	Served     string // highest admitted sequence number
-	Devs       string // hash: device -> seq | "pre" | "x:<seq>"
+	Devs       string // hash: device -> seq | "pre" | "x:<seq>" (used or left) | "m:<seq>" / "m:pre" (moved, D-13)
 	Accts      string // hash: user -> device
+	Xfers      string // hash: user -> places moved to another device (D-13)
 	Pre        string // set: devices waiting for the lottery
 	Active     string // zset: slot -> lease end (ms)
 	Leases     string // hash: slot -> lease
@@ -64,6 +65,7 @@ func For(id string) Event {
 		Served:      q("served"),
 		Devs:        q("devs"),
 		Accts:       q("accts"),
+		Xfers:       q("xfers"),
 		Pre:         q("pre"),
 		Active:      q("active"),
 		Leases:      q("leases"),

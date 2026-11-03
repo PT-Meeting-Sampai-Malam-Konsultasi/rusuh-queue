@@ -37,10 +37,26 @@ func TestClaimMapsEveryStatus(t *testing.T) {
 		store, limiter := mock_outbound.NewMockIQueueStore(ctrl), mock_outbound.NewMockIRateLimiter(ctrl)
 		limiter.EXPECT().Hit(gomock.Any(), testCfg.ClaimPerDevice, "w_1").Return(ratelimit.Result{Allowed: true}, nil)
 		store.EXPECT().Claim(gomock.Any(), gomock.Any(), gomock.Any()).Return(dto.ClaimResult{Status: status}, nil)
+		if status == dto.ClaimExpired {
+			// EXPIRED reads the place once to tell a moved place apart (D-13).
+			store.EXPECT().Place(gomock.Any(), gomock.Any(), "w_1", gomock.Any()).Return(dto.PlaceView{Found: true, Value: "x:7"}, nil)
+		}
 		svc := NewQueue(testCfg, store, mock_outbound.NewMockISigner(ctrl), limiter)
 		if _, err := svc.Claim(context.Background(), "evt1", "w_1", 7); !errors.Is(err, want) {
 			t.Errorf("%s: err = %v, want %v", status, err, want)
 		}
+	}
+}
+
+// D-13: a claim refused as EXPIRED on a place that moved to another device is MOVED.
+func TestClaimOnMovedPlaceIsMoved(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	store, limiter := mock_outbound.NewMockIQueueStore(ctrl), mock_outbound.NewMockIRateLimiter(ctrl)
+	limiter.EXPECT().Hit(gomock.Any(), gomock.Any(), gomock.Any()).Return(ratelimit.Result{Allowed: true}, nil)
+	store.EXPECT().Claim(gomock.Any(), gomock.Any(), gomock.Any()).Return(dto.ClaimResult{Status: dto.ClaimExpired}, nil)
+	store.EXPECT().Place(gomock.Any(), gomock.Any(), "w_1", gomock.Any()).Return(dto.PlaceView{Found: true, Value: "m:7"}, nil)
+	if _, err := NewQueue(testCfg, store, mock_outbound.NewMockISigner(ctrl), limiter).Claim(context.Background(), "evt1", "w_1", 7); !errors.Is(err, entity.ErrMoved) {
+		t.Fatalf("err = %v, want ErrMoved", err)
 	}
 }
 

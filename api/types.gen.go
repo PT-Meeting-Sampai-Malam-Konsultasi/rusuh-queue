@@ -90,6 +90,7 @@ const (
 	ErrorCodeFULL                     ErrorCode = "FULL"
 	ErrorCodeINTERNALERROR            ErrorCode = "INTERNAL_ERROR"
 	ErrorCodeMISSED                   ErrorCode = "MISSED"
+	ErrorCodeMOVED                    ErrorCode = "MOVED"
 	ErrorCodeNIKINVALID               ErrorCode = "NIK_INVALID"
 	ErrorCodeNIKSEATTAKEN             ErrorCode = "NIK_SEAT_TAKEN"
 	ErrorCodeNOSTOCK                  ErrorCode = "NO_STOCK"
@@ -142,6 +143,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeINTERNALERROR:
 		return true
 	case ErrorCodeMISSED:
+		return true
+	case ErrorCodeMOVED:
 		return true
 	case ErrorCodeNIKINVALID:
 		return true
@@ -1213,6 +1216,12 @@ type StartSnapPaymentParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// JoinQueueJSONBody defines parameters for JoinQueue.
+type JoinQueueJSONBody struct {
+	// TakeOver With a bearer token, move the account's live place from another device to this one (D-13). Ignored for guests.
+	TakeOver *bool `json:"takeOver,omitempty"`
+}
+
 // JoinQueueParams defines parameters for JoinQueue.
 type JoinQueueParams struct {
 	// XTurnstileToken Required for web callers without a queue token.
@@ -1263,6 +1272,9 @@ type ExchangeHandoffCodeJSONRequestBody ExchangeHandoffCodeJSONBody
 
 // StartSnapPaymentJSONRequestBody defines body for StartSnapPayment for application/json ContentType.
 type StartSnapPaymentJSONRequestBody StartSnapPaymentJSONBody
+
+// JoinQueueJSONRequestBody defines body for JoinQueue for application/json ContentType.
+type JoinQueueJSONRequestBody JoinQueueJSONBody
 
 // MidtransNotificationJSONRequestBody defines body for MidtransNotification for application/json ContentType.
 type MidtransNotificationJSONRequestBody = MidtransNotification

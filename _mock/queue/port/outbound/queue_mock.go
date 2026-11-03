@@ -120,6 +120,21 @@ func (mr *MockIQueueStoreMockRecorder) Place(ctx, k, deviceID, missWindow any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Place", reflect.TypeOf((*MockIQueueStore)(nil).Place), ctx, k, deviceID, missWindow)
 }
 
+// Transfer mocks base method.
+func (m *MockIQueueStore) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Transfer", ctx, k, deviceID, userID, missWindow, perEvent)
+	ret0, _ := ret[0].(dto.JoinResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Transfer indicates an expected call of Transfer.
+func (mr *MockIQueueStoreMockRecorder) Transfer(ctx, k, deviceID, userID, missWindow, perEvent any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transfer", reflect.TypeOf((*MockIQueueStore)(nil).Transfer), ctx, k, deviceID, userID, missWindow, perEvent)
+}
+
 // MockISigner is a mock of ISigner interface.
 type MockISigner struct {
 	ctrl     *gomock.Controller

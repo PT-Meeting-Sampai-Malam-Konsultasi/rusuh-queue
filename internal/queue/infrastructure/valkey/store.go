@@ -27,15 +27,27 @@ func (s *store) Join(ctx context.Context, k qkeys.Event, deviceID, userID string
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_join_v1",
 		[]string{k.Cfg, k.Seq, k.Devs, k.Pre, k.Accts, k.Served, k.Hist},
 		deviceID, userID, strconv.FormatInt(missWindow.Milliseconds(), 10)).ToArray()
+	return joinResult("join", k, vals, err)
+}
+
+func (s *store) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error) {
+	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_transfer_v1",
+		[]string{k.Cfg, k.Devs, k.Pre, k.Accts, k.Served, k.Hist, k.Xfers},
+		deviceID, userID, strconv.FormatInt(missWindow.Milliseconds(), 10), strconv.FormatInt(perEvent, 10)).ToArray()
+	return joinResult("transfer", k, vals, err)
+}
+
+// joinResult reads the reply shared by rusuh_join_v1 and rusuh_transfer_v1.
+func joinResult(op string, k qkeys.Event, vals []vk.ValkeyMessage, err error) (dto.JoinResult, error) {
 	if err != nil {
-		return dto.JoinResult{}, fmt.Errorf("join %s: %w", k.ID, err)
+		return dto.JoinResult{}, fmt.Errorf("%s %s: %w", op, k.ID, err)
 	}
 	if len(vals) != 8 {
-		return dto.JoinResult{}, fmt.Errorf("join %s: unexpected reply length %d", k.ID, len(vals))
+		return dto.JoinResult{}, fmt.Errorf("%s %s: unexpected reply length %d", op, k.ID, len(vals))
 	}
 	status, err := vals[0].ToString()
 	if err != nil {
-		return dto.JoinResult{}, fmt.Errorf("join %s: status: %w", k.ID, err)
+		return dto.JoinResult{}, fmt.Errorf("%s %s: status: %w", op, k.ID, err)
 	}
 	n := ints(vals[1:])
 	return dto.JoinResult{
