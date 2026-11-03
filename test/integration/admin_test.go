@@ -149,3 +149,18 @@ func TestAdminOpenKeepsSoldOutClosed(t *testing.T) {
 		t.Fatalf("%d %+v, want still closed / sold_out", rec.Code, f)
 	}
 }
+
+// FAQ 9.9: when the SSO's keys cannot be loaded, the operator gets 503 with
+// Retry-After, not 401 (the token was never checked).
+func TestAdminWhenSSOKeysUnavailable(t *testing.T) {
+	sso := newFakeCore(t)
+	sso.down.Store(true)
+	mux := http.NewServeMux()
+	// The request stops at the operator check, so no database or Valkey is needed.
+	delivery.RegisterAdmin(mux, delivery.NewAdmin(nil, nil), auth.NewAdmin(sso.srv.URL, "rusuh-admin"))
+
+	rec := patchQueue(mux, "evt_any", sso.operatorToken(t, "ops", []string{"mfa"}, auth.AdminAudience), `{"state":"paused"}`)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("status %d, Retry-After %q (%s), want 503 with Retry-After", rec.Code, rec.Header().Get("Retry-After"), rec.Body)
+	}
+}

@@ -41,7 +41,9 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 		slog.Warn("CORE_JWKS_URL empty: joins with an access token are refused until core publishes its keys")
 	}
 	limiter := ratelimit.New(s.valkey)
-	verifier := auth.New(keys, remotejwks.New(cfg.CoreJWKSURL))
+	coreKeys := remotejwks.New(cfg.CoreJWKSURL)
+	coreKeys.Warm() // load core's keys now, not on the first logged-in join
+	verifier := auth.New(keys, coreKeys)
 
 	RegisterDevice(mux, DeviceDeps{
 		Config: deviceentity.Config{
@@ -72,6 +74,7 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 
 	adminUsecase := NewAdmin(s.db, s.valkey)
 	adminAuth := auth.NewAdmin(cfg.AdminJWKSURL, cfg.AdminIssuer)
+	adminAuth.Warm()
 	if !adminAuth.Configured() {
 		slog.Warn("ADMIN_JWKS_URL empty: adminUpdateQueue refuses every call")
 	}

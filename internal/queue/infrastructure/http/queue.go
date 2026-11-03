@@ -11,6 +11,7 @@ import (
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/api"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
+	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/problem"
 )
 
@@ -45,7 +46,13 @@ func (h *QueueHandler) JoinQueue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 	userID, err := h.auth.Account(r.Context(), r)
-	if err != nil {
+	switch {
+	case errors.Is(err, auth.ErrUnavailable):
+		// core's keys could not be loaded: the token was not checked, so it is not "invalid".
+		slog.WarnContext(r.Context(), "joinQueue: core JWKS unavailable", "error", err)
+		problem.RetryAfter(w, stdhttp.StatusServiceUnavailable, api.ErrorCodeVERIFICATIONUNAVAILABLE, "Login check unavailable", keysRetryAfter)
+		return
+	case err != nil:
 		unauthorized(w, "The access token is not valid; log in again or join as a guest")
 		return
 	}
@@ -204,6 +211,9 @@ func writePlace(w stdhttp.ResponseWriter, p *entity.Place) {
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+// keysRetryAfter is the Retry-After (seconds) when an issuer's keys are unavailable.
+const keysRetryAfter = 5
 
 func unauthorized(w stdhttp.ResponseWriter, detail string) {
 	problem.Write(w, stdhttp.StatusUnauthorized, api.ErrorCodeUNAUTHORIZED, "Unauthorized", detail)

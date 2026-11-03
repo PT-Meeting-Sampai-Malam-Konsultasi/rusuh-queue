@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 type fakeCore struct {
 	priv ed25519.PrivateKey
 	srv  *httptest.Server
+	down atomic.Bool // answer 503, as if core were unreachable
 }
 
 func newFakeCore(t *testing.T) *fakeCore {
@@ -38,6 +40,10 @@ func newFakeCore(t *testing.T) *fakeCore {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	c := &fakeCore{priv: priv}
 	c.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if c.down.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		_, _ = fmt.Fprintf(w, `{"keys":[{"kty":"OKP","crv":"Ed25519","kid":"core-1","alg":"EdDSA","use":"sig","x":%q}]}`,
 			base64.RawURLEncoding.EncodeToString(pub))
 	}))
@@ -225,6 +231,28 @@ func TestJoinErrors(t *testing.T) {
 				t.Fatalf("code %s, want %s", got, tt.code)
 			}
 		})
+	}
+}
+
+// FAQ 9.9: when core's JWKS cannot be loaded, a logged-in join is 503 with
+// Retry-After (the token was not checked), and guest joins are not affected.
+func TestJoinWhenCoreKeysUnavailable(t *testing.T) {
+	e := newQueueEnv(t)
+	e.core.down.Store(true)
+	testkit.Event(t, e.client, "evt_corekeys", testkit.EventOpts{})
+	bearer := "Bearer " + e.core.accessToken(t, "user_7", []string{"otp"}, "rusuh-queue")
+
+	rec := e.do("POST", "/v1/queue/evt_corekeys/join", map[string]string{"X-Device-Token": e.deviceToken(t, "w_k1"), "Authorization": bearer})
+	if rec.Code != http.StatusServiceUnavailable || problemCode(t, rec) != api.ErrorCodeVERIFICATIONUNAVAILABLE {
+		t.Fatalf("logged-in join: status %d (%s), want 503 VERIFICATION_UNAVAILABLE", rec.Code, rec.Body)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("503 without Retry-After")
+	}
+
+	guest := e.do("POST", "/v1/queue/evt_corekeys/join", map[string]string{"X-Device-Token": e.deviceToken(t, "w_k2")})
+	if guest.Code != http.StatusOK {
+		t.Fatalf("guest join: status %d (%s), want 200", guest.Code, guest.Body)
 	}
 }
 

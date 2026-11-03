@@ -21,6 +21,9 @@ var (
 	ErrMissing   = errors.New("auth: token missing")
 	ErrInvalid   = errors.New("auth: token invalid")
 	ErrForbidden = errors.New("auth: token lacks the required authentication")
+	// ErrUnavailable means the issuer's keys could not be loaded, so the token
+	// was not checked; answer 503 with Retry-After, not 401.
+	ErrUnavailable = errors.New("auth: verification keys unavailable")
 )
 
 const (
@@ -79,7 +82,8 @@ func (v *Verifier) Place(r *http.Request, event, deviceID string) (token.QueueCl
 
 // Account returns the user id from an optional Authorization: Bearer token.
 // No header → ("", nil). A header that does not verify → ErrInvalid: a caller
-// who sends a token must not be silently treated as a guest.
+// who sends a token must not be silently treated as a guest. ErrUnavailable:
+// core's keys could not be loaded.
 func (v *Verifier) Account(ctx context.Context, r *http.Request) (string, error) {
 	h := r.Header.Get("Authorization")
 	if h == "" {
@@ -96,10 +100,18 @@ func (v *Verifier) Account(ctx context.Context, r *http.Request) (string, error)
 		jwt.WithIssuedAt(),
 	)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalid, err)
+		return "", wrapRemote(err)
 	}
 	if c.Subject == "" || !slices.Contains(c.AMR, "otp") {
 		return "", fmt.Errorf("%w: access token without sub or amr=otp", ErrInvalid)
 	}
 	return c.Subject, nil
+}
+
+// wrapRemote maps a remotejwks error to ErrUnavailable or ErrInvalid.
+func wrapRemote(err error) error {
+	if errors.Is(err, remotejwks.ErrUnavailable) {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	return fmt.Errorf("%w: %w", ErrInvalid, err)
 }

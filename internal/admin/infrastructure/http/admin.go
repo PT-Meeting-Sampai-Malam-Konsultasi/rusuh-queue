@@ -18,6 +18,10 @@ const maxBody = 16 << 10
 func (h *AdminHandler) UpdateQueue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	by, err := h.auth.Operator(r.Context(), r)
 	switch {
+	case errors.Is(err, auth.ErrUnavailable):
+		slog.WarnContext(r.Context(), "adminUpdateQueue: SSO JWKS unavailable", "error", err)
+		problem.RetryAfter(w, stdhttp.StatusServiceUnavailable, api.ErrorCodeVERIFICATIONUNAVAILABLE, "Operator check unavailable", 5)
+		return
 	case errors.Is(err, auth.ErrForbidden):
 		problem.Write(w, stdhttp.StatusForbidden, api.ErrorCodeUNAUTHORIZED, "Forbidden", "An operator token with MFA is required")
 		return
