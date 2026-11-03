@@ -419,7 +419,15 @@ reasons in the 14 advance-rule cases) and HTTP tests (MISSED on me, rejoin seq, 
       count), dead-letter (1 Nov).
 - [x] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard (1 Nov).
 - [ ] TTL freeze handling (D-11): deferred until `core` builds `adminTtlFreeze`.
-- [ ] `cmd/fakecore` for tests until `core` is ready: publishes `stream:booking` events, writes `core:{evt}:stock` / `sale` and nudges. Then the joint test with Backend 2.
+- [x] `cmd/fakecore` (3 Nov), kept local and gitignored so it is never committed. Subcommands `setup`, `run` (books,
+      pays and expires for admitted users), `stock` (inject drift), `event` (`-dup` for redelivery), `poison`,
+      `cancel`, `remove`. Checked end to end against a running `queue`:
+      - 14 events delivered 3 times each were applied once;
+      - `unreserved` equalled `core`'s available stock;
+      - a poison event was dead-lettered;
+      - a drift of −3 was corrected on the second reconcile.
+- [ ] Joint test with Backend 2 (replaces `fakecore`).
+- [x] Property test `TestStockBooksProperty` (`rapid`, 3 Nov), described under Verify below.
 
 **Verify:** the same event delivered 5 times changes state once; `held` after a purge gives the right `unreserved`;
 a poison event lands in the DLQ after 5 tries and alerts; reconcile corrects an injected drift on the second run after a nudge; a snapshot older than 30 s stops reconcile and alerts; dropping the pub/sub connection loses no correction (keys re-read).
@@ -490,6 +498,7 @@ a drill; runbooks reviewed by Backend 2.
 | Hot key on one event at 15,000 joins/s | One shard per busy event; measure Valkey ops/s in the spike test |
 | SSE behaves differently through CloudFront | Proven on Cloudflare in the lab; re-test in AWS staging; `streamFrom = 0` |
 | Moving a place to another device (D-13) is abused: a place is resold by logging in on the buyer's device, or a stolen access token moves someone's place | Accepted for now. Limits: one move per account per event (`PLACE_TRANSFERS_PER_EVENT`); the OTP goes to the owner's email; bookings are tied to the account; attendee NIK is checked at the gate; access tokens last 15 min; every move is logged ("place moved to another device"). If abuse shows: set `PLACE_TRANSFERS_PER_EVENT=0` (no deploy), or require a recent `auth_time` on `takeOver` |
+| A late `booking.held` for a lease the purge already ended. Found by `rapid` on 3 Nov: stock 1; A's lease ends and is purged; B claims the unit; `core` then holds A's unit. B is admitted with a reserved unit that no longer exists. There is no oversell, because PostgreSQL's `CHECK` refuses B's hold, but it breaks NFR-02 "admitted user always finds stock" | It happens only if `core` accepts a hold after the lease ends, or if its event arrives after `PURGE_GRACE` (30 s). Today `tokens.md` lets `core` accept `exp` with 30 s leeway, the same as the grace, so the boundary is open. Ask Backend 2: on `createBooking`, check `exp` with at most 5 s leeway. Alert on relay lag over 20 s. Reconcile corrects `unreserved` afterwards. The property test covers the case where no hold arrives after the purge |
 | H1 feedback repeats (security, transactions, alerting, runbooks) | Security tests, idempotent scripts, alerts and runbooks are tasks in M1, M4 and M6, not extras |
 
 ## Doc follow-ups (in `rusuh-documentation`, uncommitted)
