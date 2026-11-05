@@ -37,6 +37,7 @@ type placeResponse struct {
 	ServerNow       time.Time  `json:"serverNow"`
 	QueueToken      string     `json:"queueToken"`
 	AccountAttached bool       `json:"accountAttached"`
+	Claimed         bool       `json:"claimed,omitempty"`
 }
 
 // JoinQueue is joinQueue: POST /v1/queue/{eventId}/join (FR-04, FR-10, BR-07).
@@ -46,15 +47,8 @@ func (h *QueueHandler) JoinQueue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		unauthorized(w, "A valid X-Device-Token is required")
 		return
 	}
-	userID, err := h.auth.Account(r.Context(), r)
-	switch {
-	case errors.Is(err, auth.ErrUnavailable):
-		// core's keys could not be loaded: the token was not checked, so it is not "invalid".
-		slog.WarnContext(r.Context(), "joinQueue: core JWKS unavailable", "error", err)
-		problem.RetryAfter(w, stdhttp.StatusServiceUnavailable, api.ErrorCodeVERIFICATIONUNAVAILABLE, "Login check unavailable", keysRetryAfter)
-		return
-	case err != nil:
-		unauthorized(w, "The access token is not valid; log in again or join as a guest")
+	userID, ok := h.account(w, r, "joinQueue")
+	if !ok {
 		return
 	}
 
@@ -70,7 +64,6 @@ func (h *QueueHandler) JoinQueue(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 
 	place, err := h.service.Join(r.Context(), entity.JoinInput{
 		EventID: r.PathValue("eventId"), DeviceID: deviceID, UserID: userID,
-		TakeOver: body.TakeOver != nil && *body.TakeOver,
 	})
 	if err != nil {
 		h.writeError(w, r, err)
@@ -132,7 +125,12 @@ func (h *QueueHandler) ClaimTurn(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	adm, err := h.service.Claim(r.Context(), eventID, deviceID, claims.Seq)
+	userID, ok := h.account(w, r, "claimTurn")
+	if !ok {
+		return
+	}
+
+	adm, err := h.service.Claim(r.Context(), eventID, deviceID, userID, claims.Seq)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -204,12 +202,35 @@ func (h *QueueHandler) writeError(w stdhttp.ResponseWriter, r *stdhttp.Request, 
 			"Every ticket is reserved or held; the queue resumes if some come back")
 	case errors.Is(err, entity.ErrMissed):
 		problem.Write(w, stdhttp.StatusGone, api.ErrorCodeMISSED, "Your turn has passed", "Join again to queue at the back")
+	case errors.Is(err, entity.ErrLoginRequired):
+		problem.Write(w, stdhttp.StatusUnauthorized, api.ErrorCodeLOGINREQUIRED, "Log in to claim your turn",
+			"Your turn is kept while you log in")
+	case errors.Is(err, entity.ErrAdmissionUnavailable):
+		slog.WarnContext(r.Context(), "admission not recorded in core", "error", err)
+		problem.RetryAfter(w, stdhttp.StatusServiceUnavailable, api.ErrorCodeADMISSIONUNAVAILABLE, "Your turn is reserved; retry shortly", 2)
 	case errors.Is(err, entity.ErrPlaceMismatch):
 		unauthorized(w, "The queue token does not match this device's place")
 	default:
 		slog.ErrorContext(r.Context(), "queue request failed", "error", err)
 		problem.Write(w, stdhttp.StatusInternalServerError, api.ErrorCodeINTERNALERROR, "Internal error", "")
 	}
+}
+
+// account reads the optional access token: "" for a guest. It answers the
+// request itself (and returns false) when the token is bad or cannot be checked.
+func (h *QueueHandler) account(w stdhttp.ResponseWriter, r *stdhttp.Request, op string) (string, bool) {
+	userID, err := h.auth.Account(r.Context(), r)
+	switch {
+	case errors.Is(err, auth.ErrUnavailable):
+		// core's keys could not be loaded: the token was not checked, so it is not "invalid".
+		slog.WarnContext(r.Context(), op+": core JWKS unavailable", "error", err)
+		problem.RetryAfter(w, stdhttp.StatusServiceUnavailable, api.ErrorCodeVERIFICATIONUNAVAILABLE, "Login check unavailable", keysRetryAfter)
+		return "", false
+	case err != nil:
+		unauthorized(w, "The access token is not valid; log in again")
+		return "", false
+	}
+	return userID, true
 }
 
 func writePlace(w stdhttp.ResponseWriter, p *entity.Place) {
@@ -224,6 +245,7 @@ func writePlace(w stdhttp.ResponseWriter, p *entity.Place) {
 		ServerNow:       p.ServerNow.UTC(),
 		QueueToken:      p.QueueToken,
 		AccountAttached: p.AccountAttached,
+		Claimed:         p.Claimed,
 	}
 	if p.TurnExpiresAt != nil {
 		t := p.TurnExpiresAt.UTC()
@@ -232,7 +254,8 @@ func writePlace(w stdhttp.ResponseWriter, p *entity.Place) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// joinMaxBody bounds joinQueue's optional body ({"takeOver": true}).
+// joinMaxBody bounds joinQueue's optional body. {"takeOver": true} is still
+// accepted from older apps but ignored: a login always moves the place.
 const joinMaxBody = 1 << 10
 
 // keysRetryAfter is the Retry-After (seconds) when an issuer's keys are unavailable.

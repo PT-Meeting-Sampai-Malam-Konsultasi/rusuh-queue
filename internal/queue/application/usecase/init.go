@@ -11,9 +11,10 @@ type QueueUsecase struct {
 	store   outbound.IQueueStore
 	signer  outbound.ISigner
 	limiter outbound.IRateLimiter
+	admits  outbound.IAdmissions
 }
 
 // New builds the concrete Service implementation for queue.
-func NewQueue(cfg entity.Config, store outbound.IQueueStore, signer outbound.ISigner, limiter outbound.IRateLimiter) inbound.IQueueUsecase {
-	return &QueueUsecase{cfg: cfg, store: store, signer: signer, limiter: limiter}
+func NewQueue(cfg entity.Config, store outbound.IQueueStore, signer outbound.ISigner, limiter outbound.IRateLimiter, admits outbound.IAdmissions) inbound.IQueueUsecase {
+	return &QueueUsecase{cfg: cfg, store: store, signer: signer, limiter: limiter, admits: admits}
 }

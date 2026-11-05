@@ -12,7 +12,8 @@ import (
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/testkit"
 )
 
-// D-13 / FAQ 9.10: a logged-in user moves a live place to another device.
+// D-13 / FAQ 9.10: a logged-in user moves a live place to another device. Since
+// 5 Nov every logged-in join moves it; {"takeOver": true} is still accepted and ignored.
 
 func (e queueEnv) joinBody(path string, headers map[string]string, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", path, bytes.NewBufferString(body))
@@ -41,13 +42,10 @@ func TestTakeOverMovesThePlace(t *testing.T) {
 		t.Fatalf("attach on A: %+v", a2)
 	}
 
-	// Device B: a plain join is still 409; takeOver moves the place with its number.
-	if rec := e.do("POST", path, map[string]string{"X-Device-Token": devB, "Authorization": bearer}); rec.Code != http.StatusConflict {
-		t.Fatalf("plain join on B: %d %s, want 409", rec.Code, rec.Body)
-	}
-	rec := e.joinBody(path, map[string]string{"X-Device-Token": devB, "Authorization": bearer}, takeOver)
+	// Device B: logging in moves the place with its number, without asking.
+	rec := e.do("POST", path, map[string]string{"X-Device-Token": devB, "Authorization": bearer})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("takeOver on B: %d %s", rec.Code, rec.Body)
+		t.Fatalf("logged-in join on B: %d %s", rec.Code, rec.Body)
 	}
 	b := decodePlace(t, rec)
 	if *b.Seq != *a.Seq || !b.AccountAttached {
@@ -156,10 +154,11 @@ func TestTakeOverIgnoredForGuestsAndWhenOff(t *testing.T) {
 	}
 }
 
-// A claimed place does not move: the lease and admission token belong to A.
-// B's takeOver then gets a normal join, a new number at the back.
-func TestTakeOverDoesNotMoveAClaimedPlace(t *testing.T) {
-	e := newQueueEnv(t)
+// A claimed turn moves while its order window runs (ADR-0021, login_claim_test.go).
+// Once the lease ended there is nothing to move: B gets a normal join at the back,
+// and A's old claim is EXPIRED.
+func TestTakeOverDoesNotMoveAnEndedClaim(t *testing.T) {
+	e := newQueueEnvOn(t, testkit.Valkey(t), queueConfig(100*time.Millisecond, 5*time.Minute))
 	k := testkit.Event(t, e.client, "evt_claimed", testkit.EventOpts{})
 	bearer := "Bearer " + e.core.accessToken(t, "user_cl", []string{"otp"}, "rusuh-queue")
 	devA, devB := e.deviceToken(t, "m_ca"), e.deviceToken(t, "w_cb")
@@ -170,12 +169,13 @@ func TestTakeOverDoesNotMoveAClaimedPlace(t *testing.T) {
 	if rec := e.do("POST", "/v1/queue/evt_claimed/claim", map[string]string{"X-Device-Token": devA, "X-Queue-Token": a.QueueToken}); rec.Code != http.StatusOK {
 		t.Fatalf("claim on A: %d %s", rec.Code, rec.Body)
 	}
-	b := decodePlace(t, e.joinBody(path, map[string]string{"X-Device-Token": devB, "Authorization": bearer}, takeOver))
-	if *b.Seq == *a.Seq {
-		t.Fatalf("a claimed place moved to B (seq %d)", *b.Seq)
+	time.Sleep(150 * time.Millisecond) // the 100 ms order window ends
+
+	b := decodePlace(t, e.do("POST", path, map[string]string{"X-Device-Token": devB, "Authorization": bearer}))
+	if *b.Seq == *a.Seq || b.Claimed {
+		t.Fatalf("an ended claim moved to B: %+v", b)
 	}
-	// A's admission still stands: a retried claim returns the same slot.
-	if rec := e.do("POST", "/v1/queue/evt_claimed/claim", map[string]string{"X-Device-Token": devA, "X-Queue-Token": a.QueueToken}); rec.Code != http.StatusOK {
-		t.Fatalf("A's admission after B's takeOver: %d %s", rec.Code, rec.Body)
+	if rec := e.do("POST", "/v1/queue/evt_claimed/claim", map[string]string{"X-Device-Token": devA, "X-Queue-Token": a.QueueToken}); rec.Code != http.StatusGone {
+		t.Fatalf("A's claim after its lease ended: %d %s, want 410", rec.Code, rec.Body)
 	}
 }

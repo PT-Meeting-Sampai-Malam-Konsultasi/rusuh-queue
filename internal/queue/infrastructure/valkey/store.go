@@ -23,17 +23,18 @@ func New(client vk.Client) outbound.IQueueStore {
 	return &store{client: client}
 }
 
-func (s *store) Join(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration) (dto.JoinResult, error) {
+func (s *store) Join(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows) (dto.JoinResult, error) {
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_join_v1",
 		[]string{k.Cfg, k.Seq, k.Devs, k.Pre, k.Accts, k.Served, k.Hist},
-		deviceID, userID, strconv.FormatInt(missWindow.Milliseconds(), 10)).ToArray()
+		deviceID, userID, ms(w.Miss), ms(w.Login)).ToArray()
 	return joinResult("join", k, vals, err)
 }
 
-func (s *store) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error) {
+// The trailing "1" lets the script move a claimed lease (ADR-0021); tasks on older code leave it out.
+func (s *store) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows, perEvent int64) (dto.JoinResult, error) {
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_transfer_v1",
-		[]string{k.Cfg, k.Devs, k.Pre, k.Accts, k.Served, k.Hist, k.Xfers},
-		deviceID, userID, strconv.FormatInt(missWindow.Milliseconds(), 10), strconv.FormatInt(perEvent, 10)).ToArray()
+		[]string{k.Cfg, k.Devs, k.Pre, k.Accts, k.Served, k.Hist, k.Xfers, k.Leases},
+		deviceID, userID, ms(w.Miss), strconv.FormatInt(perEvent, 10), ms(w.Login), "1").ToArray()
 	return joinResult("transfer", k, vals, err)
 }
 
@@ -59,10 +60,10 @@ func joinResult(op string, k qkeys.Event, vals []vk.ValkeyMessage, err error) (d
 	}, nil
 }
 
-func (s *store) Place(ctx context.Context, k qkeys.Event, deviceID string, missWindow time.Duration) (dto.PlaceView, error) {
+func (s *store) Place(ctx context.Context, k qkeys.Event, deviceID string, w dto.Windows) (dto.PlaceView, error) {
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_place_v1",
 		[]string{k.Cfg, k.Devs, k.Accts, k.Served, k.Hist},
-		deviceID, strconv.FormatInt(missWindow.Milliseconds(), 10)).ToArray()
+		deviceID, ms(w.Miss), ms(w.Login)).ToArray()
 	if err != nil {
 		return dto.PlaceView{}, fmt.Errorf("place %s: %w", k.ID, err)
 	}
@@ -93,6 +94,8 @@ func (s *store) Leave(ctx context.Context, k qkeys.Event, deviceID string) (bool
 	}
 	return status == "OK", nil
 }
+
+func ms(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) }
 
 func ints(vals []vk.ValkeyMessage) []int64 {
 	out := make([]int64, len(vals))
@@ -126,7 +129,7 @@ func (s *store) Claim(ctx context.Context, k qkeys.Event, in dto.ClaimInput) (dt
 	vals, err := valkeyx.FCall(ctx, s.client, "rusuh_claim_v1",
 		[]string{k.Cfg, k.Served, k.Devs, k.Unreserved, k.Resv, k.Active, k.Leases, k.Hist, k.Claimed, k.Accts},
 		in.DeviceID, strconv.FormatInt(in.TokenSeq, 10), in.SlotID,
-		strconv.FormatInt(in.OrderWindow.Milliseconds(), 10), strconv.FormatInt(in.MissWindow.Milliseconds(), 10),
+		ms(in.OrderWindow), ms(in.Windows.Miss), in.UserID, ms(in.Windows.Login),
 	).ToArray()
 	if err != nil {
 		return dto.ClaimResult{}, fmt.Errorf("claim %s: %w", k.ID, err)

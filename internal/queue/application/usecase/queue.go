@@ -49,7 +49,7 @@ func (s *QueueUsecase) Join(ctx context.Context, in entity.JoinInput) (*entity.P
 		return nil, entity.ErrDeviceOtherAccount
 	case dto.JoinTransferLimit:
 		return nil, entity.ErrTransferLimit
-	case dto.JoinOK, dto.JoinPre:
+	case dto.JoinOK, dto.JoinPre, dto.JoinClaimed:
 	default:
 		return nil, fmt.Errorf("queue: unknown join status %q", res.Status)
 	}
@@ -61,17 +61,26 @@ func (s *QueueUsecase) Join(ctx context.Context, in entity.JoinInput) (*entity.P
 	} else {
 		seq = &res.Seq
 	}
-	return s.place(in.EventID, in.DeviceID, state, seq, res.Attached, res.EndsAt, res.Turn)
+	p, err := s.place(in.EventID, in.DeviceID, state, seq, res.Attached, res.EndsAt, res.Turn)
+	if err != nil {
+		return nil, err
+	}
+	p.Claimed = res.Status == dto.JoinClaimed
+	return p, nil
 }
 
-// join runs the join script, or first the transfer script when a logged-in
-// caller asks to take over the account's place from another device (D-13).
-// A guest, or moving turned off, gets a normal join (and 409 if the account
-// holds a place elsewhere).
+func (s *QueueUsecase) windows() dto.Windows {
+	return dto.Windows{Miss: s.cfg.MissWindow, Login: s.cfg.LoginWindow}
+}
+
+// join runs the transfer script first for every logged-in caller: the account's
+// place moves here without asking, and the better of the two places is kept
+// (D-13, forced since 5 Nov). A guest, or moving turned off, gets a normal join
+// (and 409 if the account holds a place elsewhere).
 func (s *QueueUsecase) join(ctx context.Context, in entity.JoinInput) (dto.JoinResult, error) {
 	k := qkeys.For(in.EventID)
-	if in.TakeOver && in.UserID != "" && s.cfg.TransfersPerEvent > 0 {
-		res, err := s.store.Transfer(ctx, k, in.DeviceID, in.UserID, s.cfg.MissWindow, s.cfg.TransfersPerEvent)
+	if in.UserID != "" && s.cfg.TransfersPerEvent > 0 {
+		res, err := s.store.Transfer(ctx, k, in.DeviceID, in.UserID, s.windows(), s.cfg.TransfersPerEvent)
 		if err != nil || res.Status != dto.JoinNothingToMove {
 			if err == nil && (res.Status == dto.JoinOK || res.Status == dto.JoinPre) {
 				slog.InfoContext(ctx, "place moved to another device", "event", in.EventID)
@@ -79,14 +88,14 @@ func (s *QueueUsecase) join(ctx context.Context, in entity.JoinInput) (dto.JoinR
 			return res, err
 		}
 	}
-	return s.store.Join(ctx, k, in.DeviceID, in.UserID, s.cfg.MissWindow)
+	return s.store.Join(ctx, k, in.DeviceID, in.UserID, s.windows())
 }
 
 func (s *QueueUsecase) MyPlace(ctx context.Context, eventID, deviceID string, tokenSeq int64) (*entity.Place, error) {
 	if !qkeys.ValidEvent(eventID) {
 		return nil, entity.ErrUnknownEvent
 	}
-	v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.cfg.MissWindow)
+	v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.windows())
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +155,12 @@ func (s *QueueUsecase) Frontier(ctx context.Context, eventID string) ([]byte, er
 	return b, nil
 }
 
-func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, tokenSeq int64) (*entity.Admission, error) {
+func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID, userID string, tokenSeq int64) (*entity.Admission, error) {
 	if !qkeys.ValidEvent(eventID) {
 		return nil, entity.ErrUnknownEvent
+	}
+	if userID == "" && s.cfg.ClaimRequiresLogin {
+		return nil, entity.ErrLoginRequired
 	}
 	if r, err := s.limiter.Hit(ctx, s.cfg.ClaimPerDevice, deviceID); err != nil {
 		slog.WarnContext(ctx, "claim rate limit unavailable, allowing", "error", err)
@@ -158,7 +170,7 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 
 	if tokenSeq == 0 {
 		// A queue token from before the draw carries seq 0; claim with the number the draw gave.
-		v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.cfg.MissWindow)
+		v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.windows())
 		if err != nil {
 			return nil, err
 		}
@@ -169,8 +181,8 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 		return nil, err
 	}
 	res, err := s.store.Claim(ctx, qkeys.For(eventID), dto.ClaimInput{
-		DeviceID: deviceID, TokenSeq: tokenSeq, SlotID: slot,
-		OrderWindow: s.cfg.OrderWindow, MissWindow: s.cfg.MissWindow,
+		DeviceID: deviceID, UserID: userID, TokenSeq: tokenSeq, SlotID: slot,
+		OrderWindow: s.cfg.OrderWindow, Windows: s.windows(),
 	})
 	if err != nil {
 		return nil, err
@@ -191,6 +203,10 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 		return nil, entity.ErrFull
 	case dto.ClaimNoStock:
 		return nil, entity.ErrNoStock
+	case dto.ClaimDeviceOtherAccount:
+		return nil, entity.ErrDeviceOtherAccount
+	case dto.ClaimAccountElsewhere:
+		return nil, entity.ErrAccountElsewhere
 	default:
 		return nil, fmt.Errorf("queue: unknown claim status %q", res.Status)
 	}
@@ -210,6 +226,13 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 	if err != nil {
 		return nil, fmt.Errorf("queue: sign admission: %w", err)
 	}
+	// core accepts only a token it has stored, so the user must not get one core missed.
+	if err := s.admits.Register(ctx, dto.AdmissionRecord{
+		Token: raw, EventID: eventID, DeviceID: deviceID, UserID: userID, Seq: tokenSeq,
+		SlotID: res.SlotID, ReservedUnits: res.Units, ExpiresAt: res.EndsAt,
+	}); err != nil {
+		return nil, err
+	}
 	return &entity.Admission{
 		Token:         raw,
 		SlotID:        res.SlotID,
@@ -223,7 +246,7 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID string, toke
 // expiredOrMoved tells a moved place (MOVED) from one that ended (EXPIRED) after
 // a refused claim. Only refusals pay for this extra read.
 func (s *QueueUsecase) expiredOrMoved(ctx context.Context, eventID, deviceID string) error {
-	v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.cfg.MissWindow)
+	v, err := s.store.Place(ctx, qkeys.For(eventID), deviceID, s.windows())
 	if err == nil && strings.HasPrefix(v.Value, "m:") {
 		return entity.ErrMoved
 	}

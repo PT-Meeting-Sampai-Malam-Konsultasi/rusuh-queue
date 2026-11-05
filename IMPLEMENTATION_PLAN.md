@@ -25,15 +25,16 @@ Server-Sent Events. Everything after admission belongs to `core` (Node.js).
 ## How `queue` talks to `core`
 
 There are two backend codebases. At runtime there are four deployments: `queue`, `core-api` and `core-worker` (one
-Node.js image in two roles), and `dukcapil-mock`. `queue` and `core` **never call each other over HTTP**; they share
-one Valkey cluster and one PostgreSQL instance, each with its own keys and schema.
+Node.js image in two roles), and `dukcapil-mock`. They share one Valkey cluster and one PostgreSQL instance, each with its own keys and schema. The only HTTP call
+between them is `registerAdmission` (`queue` → `core`, ADR-0020, link 5).
 
 | # | Link | Direction | How | When |
 | --- | --- | --- | --- | --- |
-| 1 | Tokens | both | Each signs its own EdDSA tokens and serves `/.well-known/jwks.json`; the other verifies locally with cached keys | Every request with a token |
+| 1 | Tokens | both | Each signs its own EdDSA tokens and serves `/.well-known/jwks.json`; the other verifies locally with cached keys (admission tokens: matched against link 5 since ADR-0020) | Every request with a token |
 | 2 | Booking events | `core-worker` → `queue` | Outbox → relay → Valkey Stream `stream:booking` → consumer group `queue` (at least once, acked, dead-letter) | `booking.held`, `booking.paid`, `booking.expired` |
 | 3 | Shared state, key + nudge | both | The owner writes a key; sharded pub/sub (`SPUBLISH`) only says "re-read it". Readers also re-read on reconnect and on a timer, so a lost message costs only delay | Stock and sale settings from `core`; queue state from `queue` |
 | 4 | The client | `queue` → app → `core` | The app sends the admission token to `core` as `X-Admission-Token` | Detail, attendee check, hold |
+| 5 | Admission record | `queue` → `core` | `PUT /v1/internal/admissions/{slotId}` (`registerAdmission`, service token, 1 s, one retry) before the token goes to the user; `core` accepts only a token that matches its record. 503 `ADMISSION_UNAVAILABLE` when `core` fails | Every successful claim |
 
 **Rule:** anything that changes a counter by a delta (held, paid, expired) goes on the stream, never on plain pub/sub,
 because pub/sub has no ack or replay. Pub/sub carries only "latest value wins" state that sits in a key.
@@ -95,8 +96,8 @@ Each has a recommendation, so work can start; confirm with Backend 2 (Node.js) b
 | D-8 | Key layout. The docs list `q:{evt}:dev:{device}` per device, but a Lua script must declare every key it touches in cluster mode. | Hashes per event: `q:{evt}:devs` (device → seq), `q:{evt}:accts` (user → device), `q:{evt}:leases` (slot → lease). Same hash tag, declared keys only. Update the Solution Architecture's key table once agreed. |
 | D-9 | How does Home learn that the queue is `closed` (FR-03)? | `core` catalog reads `q:{evt}:frontier` when it rebuilds the Home model, or subscribes to `q:{evt}:tick`. `queue` documents the frontier JSON as a contract. |
 | D-10 | Who attaches the account to a place after login? The journey has `core` auth writing `q:{evt}:acct:{user}`, which breaks key ownership. | The app calls `joinQueue` again with its access token; `queue` attaches the account (idempotent). Fix journey node LG15. |
-| D-12 | How long does an admitted device have to claim its turn? (HiFi 26 Oct: "60 detik untuk masuk") | **60 s** (`MISS_WINDOW`), was 5 min. Clients claim automatically at the turn. The D-7 invitation window follows it; `RATE_WINDOW` (5 min) keeps the history for `ratePerMin`. A missed, used or left place is over: join gives a new number at the back. |
-| D-13 | Can a logged-in user move their place to another device (log out on A, log in on B, keep `seq`)? (asked 1 Nov, decided 3 Nov) | **Allowed for now, with the risks below accepted.** On 409 `ACCOUNT_HAS_PLACE_ELSEWHERE` the app asks the user, then sends `joinQueue` with `{"takeOver": true}`. `rusuh_transfer_v1` moves a live, unclaimed place with the same `seq` and turn time. A gets 410 `MOVED`. At most `PLACE_TRANSFERS_PER_EVENT` (default 1, 0 = off) moves per account per event. Reverses the device-only rule of QnA 14 Oct; to confirm with the owner. FAQ 9.10. |
+| D-12 | How long does an admitted device have to claim its turn? (HiFi 26 Oct: "60 detik untuk masuk") | **60 s** (`MISS_WINDOW`), was 5 min; since ADR-0021 only for a device logged in before its turn, the others get `LOGIN_WINDOW` (3 min). Clients claim automatically at the turn. The D-7 invitation window follows it; `RATE_WINDOW` (5 min) keeps the history for `ratePerMin`. A missed, used or left place is over: join gives a new number at the back. |
+| D-13 | Can a logged-in user move their place to another device (log out on A, log in on B, keep `seq`)? (asked 1 Nov, decided 3 Nov) | **Allowed for now, with the risks below accepted.** Since 5 Nov (Backend 2) every logged-in `joinQueue` moves the place without asking, keeping the better place; `{"takeOver": true}` is accepted and ignored. `rusuh_transfer_v1` moves a live, unclaimed place with the same `seq` and turn time. A gets 410 `MOVED`. Since ADR-0021 a claimed turn not yet held moves too (same slot and end). At most `PLACE_TRANSFERS_PER_EVENT` (default 1, 0 = off) moves per account per event. Reverses the device-only rule of QnA 14 Oct; to confirm with the owner. FAQ 9.10. |
 | D-11 | Does the TTL freeze affect `queue`? | Yes, for admitted users without a hold: on `core:incident` = frozen, the controller stops purging and pushes lease ends forward by the frozen time when it lifts. Held leases already wait for `core`'s events. |
 
 ## Repository layout
@@ -253,7 +254,8 @@ Runs in every task; per live event exactly one leader does the work.
 only), `SIGNING_KEYS` (Ed25519 PEMs with `kid`, current first), `CORE_JWKS_URL`,
 `TURNSTILE_SECRET`, `ATTESTOR=sandbox|real`, `CORS_ORIGINS`, `STREAM_MAX_PER_TASK=5000`, `STREAM_LIFETIME=10m`,
 `HEARTBEAT=15s`, `TICK=1s`, `RECONCILE_EVERY=10s`, `SNAPSHOT_MAX_AGE=30s`, `PURGE_GRACE=30s`, `ORDER_WINDOW=5m`,
-`MISS_WINDOW=60s` (MISSED, D-7 invitations), `RATE_WINDOW=5m` (`ratePerMin`, history kept), `RATE_PRIOR_ORDER_TIME=6m` (warm-up speed guess, 0 = off), `RL_JOIN_PER_DEVICE=30`, `RL_CLAIM_PER_DEVICE=60`, `TRUSTED_PROXY_CIDRS`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`MISS_WINDOW=60s` (MISSED for a device logged in before its turn), `LOGIN_WINDOW=3m` (every other device; D-7 invitations use the longer of the two; ADR-0021), `CLAIM_REQUIRES_LOGIN=true`,
+`CORE_INTERNAL_URL`, `CORE_INTERNAL_TOKEN`, `CORE_ADMISSION_TIMEOUT=1s` (registerAdmission, ADR-0020), `RATE_WINDOW=5m` (`ratePerMin`, history kept), `RATE_PRIOR_ORDER_TIME=6m` (warm-up speed guess, 0 = off), `RL_JOIN_PER_DEVICE=30`, `RL_CLAIM_PER_DEVICE=60`, `TRUSTED_PROXY_CIDRS`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
 `GOMEMLIMIT`.
 
 ### Metrics and alerts (NFR-09)

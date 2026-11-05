@@ -2,7 +2,6 @@ package outbound
 
 import (
 	"context"
-	"time"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/dto"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/qkeys"
@@ -14,11 +13,11 @@ import (
 
 // IQueueStore is the outbound port to the event's Valkey keys.
 type IQueueStore interface {
-	// Join and Place take the miss window: a missed place is over (join gives a new one).
-	Join(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration) (dto.JoinResult, error)
-	// Transfer moves the account's live place on another device to deviceID (D-13).
-	Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error)
-	Place(ctx context.Context, k qkeys.Event, deviceID string, missWindow time.Duration) (dto.PlaceView, error)
+	// Join and Place take the turn windows: a missed place is over (join gives a new one).
+	Join(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows) (dto.JoinResult, error)
+	// Transfer moves the account's live place, or its claimed lease not yet held, to deviceID (D-13, ADR-0021).
+	Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows, perEvent int64) (dto.JoinResult, error)
+	Place(ctx context.Context, k qkeys.Event, deviceID string, w dto.Windows) (dto.PlaceView, error)
 	// Leave ends the device's place; found is false for an unknown event.
 	Leave(ctx context.Context, k qkeys.Event, deviceID string) (found bool, err error)
 	// Frontier returns nil, nil when the event has no frontier.
@@ -29,6 +28,13 @@ type IQueueStore interface {
 // ISigner issues queue and admission tokens (pkg/token).
 type ISigner interface {
 	Sign(kind token.Kind, claims token.Claims) (string, error)
+}
+
+// IAdmissions records an admission in core before the user gets its token
+// (registerAdmission). It returns entity.ErrAdmissionUnavailable when core cannot
+// be reached, so the claim is retried; any other error is a contract bug.
+type IAdmissions interface {
+	Register(ctx context.Context, rec dto.AdmissionRecord) error
 }
 
 // IRateLimiter counts joins and claims per device (pkg/ratelimit).

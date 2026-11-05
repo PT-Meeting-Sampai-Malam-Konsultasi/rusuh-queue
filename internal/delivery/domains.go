@@ -12,6 +12,8 @@ import (
 	controllerentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/controller/domain/entity"
 	deviceentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/device/domain/entity"
 	queueentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
+	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/infrastructure/coreapi"
+	queueoutbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/outbound"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/attest"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/clientip"
@@ -37,8 +39,20 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 	if cfg.RateWindow < cfg.MissWindow {
 		return fmt.Errorf("RATE_WINDOW (%s) must not be shorter than MISS_WINDOW (%s)", cfg.RateWindow, cfg.MissWindow)
 	}
+	if cfg.RateWindow < cfg.LoginWindow {
+		return fmt.Errorf("RATE_WINDOW (%s) must not be shorter than LOGIN_WINDOW (%s)", cfg.RateWindow, cfg.LoginWindow)
+	}
 	if cfg.CoreJWKSURL == "" {
 		slog.Warn("CORE_JWKS_URL empty: joins with an access token are refused until core publishes its keys")
+	}
+	var admissions queueoutbound.IAdmissions
+	switch {
+	case cfg.CoreInternalURL == "":
+		slog.Warn("CORE_INTERNAL_URL empty: claims return admission tokens without recording them in core")
+	case cfg.CoreInternalToken == "" && cfg.Env != "development":
+		return errors.New("CORE_INTERNAL_TOKEN is required with CORE_INTERNAL_URL outside development")
+	default:
+		admissions = coreapi.New(cfg.CoreInternalURL, cfg.CoreInternalToken, cfg.CoreAdmissionTimeout)
 	}
 	limiter := ratelimit.New(s.valkey)
 	coreKeys := remotejwks.New(cfg.CoreJWKSURL)
@@ -60,16 +74,19 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 
 	RegisterQueue(mux, QueueDeps{
 		Config: queueentity.Config{
-			JoinPerDevice:     ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
-			ClaimPerDevice:    ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
-			OrderWindow:       cfg.OrderWindow,
-			MissWindow:        cfg.MissWindow,
-			TransfersPerEvent: cfg.PlaceTransfersPerEvent,
+			JoinPerDevice:      ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
+			ClaimPerDevice:     ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
+			OrderWindow:        cfg.OrderWindow,
+			MissWindow:         cfg.MissWindow,
+			LoginWindow:        cfg.LoginWindow,
+			ClaimRequiresLogin: cfg.ClaimRequiresLogin,
+			TransfersPerEvent:  cfg.PlaceTransfersPerEvent,
 		},
-		Valkey:  s.valkey,
-		Signer:  keys,
-		Limiter: limiter,
-		Auth:    verifier,
+		Valkey:     s.valkey,
+		Signer:     keys,
+		Limiter:    limiter,
+		Auth:       verifier,
+		Admissions: admissions,
 	})
 	RegisterStream(mux)
 
@@ -86,7 +103,8 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 	controllerConfig.PurgeGrace = cfg.PurgeGrace
 	controllerConfig.HistWindow = cfg.RateWindow
 	controllerConfig.PriorOrderTime = cfg.RatePrior
-	controllerConfig.InviteWindow = cfg.MissWindow
+	// a guest logging in keeps its invitation for the login window (ADR-0021)
+	controllerConfig.InviteWindow = max(cfg.MissWindow, cfg.LoginWindow)
 	controllerConfig.ReconcileEvery = cfg.ReconcileEvery
 	controllerConfig.SnapshotMaxAge = cfg.SnapshotMaxAge
 	controller := NewController(ControllerDeps{

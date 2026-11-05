@@ -32,8 +32,16 @@ type Config struct {
 	CORSOrigins       []string
 
 	// CoreJWKSURL: core's public keys for access tokens (D-4), e.g. https://<core>/.well-known/jwks.json
-	CoreJWKSURL            string
-	RLJoinPerDevice        int64 // joins per minute per device
+	CoreJWKSURL string
+	// CoreInternalURL: core's private base URL for registerAdmission, e.g. http://core-api.internal/v1.
+	// Empty turns registration off (claims answer without asking core).
+	CoreInternalURL      string
+	CoreInternalToken    string        // shared secret for core's internal endpoints
+	CoreAdmissionTimeout time.Duration // per attempt; one retry
+	RLJoinPerDevice      int64         // joins per minute per device
+	// LoginWindow: the turn of a device not logged in before its turn (ADR-0021); ClaimRequiresLogin: claim needs an account.
+	LoginWindow            time.Duration
+	ClaimRequiresLogin     bool
 	PlaceTransfersPerEvent int64 // moves of a place to another device per account per event (D-13); 0 = off
 	RLClaimPerDevice       int64 // claims per minute per device
 

@@ -51,21 +51,62 @@ end
 -- was MISSED: reached more than window ms ago without a claim. A seq below the
 -- trimmed history (cfg.histFloor) was reached before the history window, so it
 -- is missed too (the window must not exceed the history window).
-local function turn(hist, cfg, seq, served, now, window)
+--
+-- who (optional, ADR-0021) = {login = ms, accts = key, device = id}: a device not
+-- logged in before its turn was reached ("t:<device>" in accts, the login time)
+-- gets the login window instead of window. Without who, or with a login window
+-- no longer than window, every device gets window (the behaviour before ADR-0021).
+local function window_for(who, start, window)
+  if not who or not who.login or who.login <= window then return window end
+  local t = tonumber(server.call('HGET', who.accts, 't:' .. who.device) or '')
+  if t and t <= start then return window end
+  return who.login
+end
+
+local function turn(hist, cfg, seq, served, now, window, who)
   if seq > served then return 0, false end
   if seq <= int(server.call('HGET', cfg, 'histFloor')) then return 0, true end
   local first = server.call('ZRANGEBYSCORE', hist, seq, '+inf', 'LIMIT', 0, 1)
   if not first[1] then return 0, false end
-  local ends = tonumber(string.match(first[1], '^(%d+):')) + window
+  local start = tonumber(string.match(first[1], '^(%d+):'))
+  local ends = start + window_for(who, start, window)
   return ends, ends < now
 end
 
 -- A place value in devs that still waits or may claim: a number that is not missed.
-local function live_place(v, hist, cfg, served, now, window)
+local function live_place(v, hist, cfg, served, now, window, who)
   local seq = tonumber(v)
   if not seq then return false end
-  local _, missed = turn(hist, cfg, seq, served, now, window)
+  local _, missed = turn(hist, cfg, seq, served, now, window, who)
   return not missed
+end
+
+-- A lease is "device|seq|units|status|endMs"; status is reserved | held | purged.
+local function parse_lease(v)
+  local d, s, u, st, e = string.match(v, '^([^|]*)|(%d+)|(%d+)|(%a+)|(%d+)$')
+  if not d then return nil end
+  return {device = d, seq = tonumber(s), units = tonumber(u), status = st, ends = tonumber(e)}
+end
+
+local function lease_value(l)
+  return table.concat({l.device, fmt(l.seq), fmt(l.units), l.status, fmt(l.ends)}, '|')
+end
+
+-- open_lease is the device's claimed lease while core has not held it and it has
+-- not ended (the order window is still running), with its slot; else nil.
+local function open_lease(leases, device, now)
+  local slot = server.call('HGET', leases, 'd:' .. device)
+  local raw = slot and server.call('HGET', leases, slot)
+  local l = raw and parse_lease(raw)
+  if l and l.status == 'reserved' and l.ends > now then return l, slot end
+  return nil
+end
+
+-- attach binds user to device in accts and records the first login time (ADR-0021).
+local function attach(accts, user, device, now, cfg)
+  server.call('HSET', accts, user, device, 'd:' .. device, user)
+  server.call('HSETNX', accts, 't:' .. device, now)
+  ensure_expiry(accts, cfg)
 end
 
 -- apply_state sets the operator's switch (adminUpdateQueue, OPS-01): paused holds
@@ -136,7 +177,7 @@ end
 
 -- rusuh_join_v1: one place per device and per account in one event (ADR-0003, BR-07).
 -- KEYS: cfg, seq, devs, pre, accts, served, hist
--- ARGV: device, user ('' for a guest), miss window ms
+-- ARGV: device, user ('' for a guest), miss window ms[, login window ms (ADR-0021)]
 -- Returns {status, seq, attached (0|1), endsAtMs, served, opensAtMs, turnEndsMs, nowMs}; status is
 --   OK (seq set) | PRE (waiting for the draw, seq 0) | CLOSED | NO_EVENT
 --   | ACCOUNT_ELSEWHERE (the account holds a live place on another device)
@@ -146,7 +187,7 @@ end
 -- device joins again at the back (FR-18, "Antre lagi").
 local function join_v1(keys, args)
   local cfg, seqk, devs, pre, accts, servedk, hist = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6], keys[7]
-  local device, user, window = args[1], args[2], int(args[3])
+  local device, user, window, login = args[1], args[2], int(args[3]), tonumber(args[4])
 
   local c = server.call('HMGET', cfg, 'state', 'endsAt', 'opensAt')
   local state = c[1]
@@ -157,6 +198,7 @@ local function join_v1(keys, args)
     return {status, seq, attached, ends, served, opens, turn_ends, now}
   end
   if state == 'closed' then return reply('CLOSED', 0, 0, 0) end
+  local me = {login = login, accts = accts, device = device}
 
   local dev_user = server.call('HGET', accts, 'd:' .. device)
   if user ~= '' then
@@ -164,7 +206,8 @@ local function join_v1(keys, args)
     local owner = server.call('HGET', accts, user)
     if owner and owner ~= device then
       local other = server.call('HGET', devs, owner)
-      if other == 'pre' or (other and live_place(other, hist, cfg, served, now, window)) then
+      local them = {login = login, accts = accts, device = owner}
+      if other == 'pre' or (other and live_place(other, hist, cfg, served, now, window, them)) then
         return reply('ACCOUNT_ELSEWHERE', 0, 0, 0)
       end
     end
@@ -174,7 +217,7 @@ local function join_v1(keys, args)
   local status, seq = 'OK', 0
   if cur == 'pre' then
     status = 'PRE'
-  elseif cur and live_place(cur, hist, cfg, served, now, window) then
+  elseif cur and live_place(cur, hist, cfg, served, now, window, me) then
     seq = tonumber(cur)
   elseif state == 'preopen' then
     server.call('SADD', pre, device)
@@ -190,24 +233,24 @@ local function join_v1(keys, args)
 
   local attached = 0
   if user ~= '' then
-    server.call('HSET', accts, user, device, 'd:' .. device, user)
-    ensure_expiry(accts, cfg)
+    attach(accts, user, device, now, cfg)
     attached = 1
   elseif dev_user then
     attached = 1
   end
   local turn_ends = 0
-  if seq > 0 then turn_ends = turn(hist, cfg, seq, served, now, window) end
+  if seq > 0 then turn_ends = turn(hist, cfg, seq, served, now, window, me) end
   return reply(status, seq, attached, turn_ends)
 end
 
 -- rusuh_place_v1: read one device's place (getMyPlace). Read-only.
--- KEYS: cfg, devs, accts, served, hist; ARGV: device, miss window ms
+-- KEYS: cfg, devs, accts, served, hist; ARGV: device, miss window ms[, login window ms]
 -- Returns {state ('' = no event), place value, attached, endsAtMs, served,
 --          opensAtMs, turnEndsMs, missed (0|1), nowMs}.
 local function place_v1(keys, args)
   local cfg, devs, accts, servedk, hist = keys[1], keys[2], keys[3], keys[4], keys[5]
   local device, window = args[1], int(args[2])
+  local me = {login = tonumber(args[3]), accts = accts, device = device}
   local c = server.call('HMGET', cfg, 'state', 'endsAt', 'opensAt')
   local now = now_ms()
   if not c[1] then return {'', '', 0, 0, 0, 0, 0, 0, now} end
@@ -215,7 +258,7 @@ local function place_v1(keys, args)
   local v = server.call('HGET', devs, device) or ''
   local attached = server.call('HEXISTS', accts, 'd:' .. device)
   local turn_ends, missed = 0, false
-  if tonumber(v) then turn_ends, missed = turn(hist, cfg, tonumber(v), served, now, window) end
+  if tonumber(v) then turn_ends, missed = turn(hist, cfg, tonumber(v), served, now, window, me) end
   return {c[1], v, attached, int(c[2]), served, int(c[3]), turn_ends, missed and 1 or 0, now}
 end
 
@@ -247,14 +290,19 @@ server.register_function('rusuh_leave_v1', leave_v1)
 -- "m:pre"), so A's queue token gets MOVED. A claimed place ("x:") does not move,
 -- because the lease and the admission token are bound to A. If B has its own
 -- live place, the better one is kept (a number over the draw, the lower number).
--- KEYS: cfg, devs, pre, accts, served, hist, xfers
--- ARGV: device B, user, miss window ms, transfers allowed per account per event
+-- ADR-0021: with the trailing resume flag, a claimed lease of A that core has not
+-- held yet moves too (slot, units and lease end unchanged): B's own place ends,
+-- A becomes "m:<seq>", and the reply is CLAIMED; B then claims the same slot.
+-- B takes A's login time ("t:"), so a move never buys the longer turn.
+-- KEYS: cfg, devs, pre, accts, served, hist, xfers[, leases]
+-- ARGV: device B, user, miss window ms, transfers allowed per account per event[, login window ms, resume ("1")]
 -- Returns the join_v1 reply {status, seq, attached, endsAtMs, served, opensAtMs, turnEndsMs, nowMs};
---   status OK | PRE (moved) | NOTHING (no live place elsewhere: run a normal join)
+--   status OK | PRE (moved) | CLAIMED (claimed lease moved) | NOTHING (no live place elsewhere: run a normal join)
 --   | LIMIT (transfer cap reached) | DEVICE_OTHER_ACCOUNT | CLOSED | NO_EVENT
 local function transfer_v1(keys, args)
-  local cfg, devs, pre, accts, servedk, hist, xfers = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6], keys[7]
-  local device, user, window, cap = args[1], args[2], int(args[3]), int(args[4])
+  local cfg, devs, pre, accts, servedk, hist, xfers, leases = keys[1], keys[2], keys[3], keys[4], keys[5], keys[6], keys[7], keys[8]
+  local device, user, window, cap, login = args[1], args[2], int(args[3]), int(args[4]), tonumber(args[5])
+  local resume = args[6] == '1' and leases ~= nil
 
   local c = server.call('HMGET', cfg, 'state', 'endsAt', 'opensAt')
   local state = c[1]
@@ -271,14 +319,38 @@ local function transfer_v1(keys, args)
   local owner = server.call('HGET', accts, user)
   if not owner or owner == device then return reply('NOTHING', 0, 0, 0) end
   local theirs = server.call('HGET', devs, owner)
-  if not (theirs == 'pre' or (theirs and live_place(theirs, hist, cfg, served, now, window))) then
+  local them = {login = login, accts = accts, device = owner}
+  local me = {login = login, accts = accts, device = device}
+  local owner_t = server.call('HGET', accts, 't:' .. owner)
+  local function take_login_time()
+    if owner_t then server.call('HSET', accts, 't:' .. device, owner_t) else server.call('HSETNX', accts, 't:' .. device, now) end
+  end
+
+  local l, slot
+  if resume and theirs and string.sub(theirs, 1, 2) == 'x:' then l, slot = open_lease(leases, owner, now) end
+  if l and l.seq == tonumber(string.sub(theirs, 3)) then
+    if int(server.call('HGET', xfers, user)) >= cap then return reply('LIMIT', 0, 0, 0) end
+    if server.call('HGET', devs, device) == 'pre' then server.call('SREM', pre, device) end
+    server.call('HSET', devs, device, theirs, owner, 'm:' .. l.seq)
+    l.device = device
+    server.call('HSET', leases, slot, lease_value(l), 'd:' .. device, slot)
+    server.call('HDEL', leases, 'd:' .. owner)
+    server.call('HDEL', accts, 'd:' .. owner)
+    server.call('HSET', accts, user, device, 'd:' .. device, user)
+    take_login_time()
+    server.call('HINCRBY', xfers, user, 1)
+    for _, k in ipairs({devs, accts, xfers, leases}) do ensure_expiry(k, cfg) end
+    return reply('CLAIMED', l.seq, 1, 0)
+  end
+
+  if not (theirs == 'pre' or (theirs and live_place(theirs, hist, cfg, served, now, window, them))) then
     return reply('NOTHING', 0, 0, 0)
   end
   if int(server.call('HGET', xfers, user)) >= cap then return reply('LIMIT', 0, 0, 0) end
 
   -- B's own live place, if any, competes with the moved one.
   local mine = server.call('HGET', devs, device)
-  if not (mine == 'pre' or (mine and live_place(mine, hist, cfg, served, now, window))) then mine = nil end
+  if not (mine == 'pre' or (mine and live_place(mine, hist, cfg, served, now, window, me))) then mine = nil end
   local keep = theirs
   if mine and mine ~= 'pre' and (theirs == 'pre' or tonumber(mine) < tonumber(theirs)) then keep = mine end
 
@@ -296,26 +368,17 @@ local function transfer_v1(keys, args)
   end
   server.call('HSET', devs, device, keep)
   server.call('HSET', accts, user, device, 'd:' .. device, user)
+  if keep == theirs then take_login_time() else server.call('HSETNX', accts, 't:' .. device, now) end
   server.call('HINCRBY', xfers, user, 1)
   for _, k in ipairs({devs, accts, xfers}) do ensure_expiry(k, cfg) end
 
   if keep == 'pre' then return reply('PRE', 0, 1, 0) end
   local seq = tonumber(keep)
-  return reply('OK', seq, 1, turn(hist, cfg, seq, served, now, window))
+  return reply('OK', seq, 1, turn(hist, cfg, seq, served, now, window, me))
 end
 server.register_function('rusuh_transfer_v1', transfer_v1)
 
 
--- A lease is "device|seq|units|status|endMs"; status is reserved | held | purged.
-local function parse_lease(v)
-  local d, s, u, st, e = string.match(v, '^([^|]*)|(%d+)|(%d+)|(%a+)|(%d+)$')
-  if not d then return nil end
-  return {device = d, seq = tonumber(s), units = tonumber(u), status = st, ends = tonumber(e)}
-end
-
-local function lease_value(l)
-  return table.concat({l.device, fmt(l.seq), fmt(l.units), l.status, fmt(l.ends)}, '|')
-end
 
 -- hist and inv hold one member "<tsMs>:<served>" per advancing tick, scored by
 -- served. served only grows, so score order is also time order: popping from
@@ -564,27 +627,58 @@ end
 -- token seq (a live lease of this place is returned again, so a retried claim
 -- is idempotent; else EXPIRED); seq > served -> NOT_YET; seq reached more than
 -- the miss window ago -> MISSED; slots full -> FULL; no units -> NO_STOCK.
+-- ADR-0021: with a user, the device must not belong to another account
+-- (DEVICE_OTHER_ACCOUNT) and the account must not hold a live place or an open
+-- lease on another device (ACCOUNT_ELSEWHERE); a successful claim attaches the
+-- user. The miss window then depends on the login time (window_for).
 -- KEYS: cfg, served, devs, unreserved, resv, active, leases, hist, claimed, accts
--- ARGV: device, token seq, new slot id, order window ms, miss window ms
+-- ARGV: device, token seq, new slot id, order window ms, miss window ms[, user, login window ms]
 -- Returns {status, slot, units, endMs, attached (0|1), nowMs}.
 local function claim_v1(keys, args)
   local cfg, servedk, devs, unresk, resvk = keys[1], keys[2], keys[3], keys[4], keys[5]
   local active, leases, hist, claimed, accts = keys[6], keys[7], keys[8], keys[9], keys[10]
   local device, tseq, slot = args[1], args[2], args[3]
+  local window, user = int(args[5]), args[6] or ''
+  local me = {login = tonumber(args[7]), accts = accts, device = device}
   local state = server.call('HGET', cfg, 'state')
   if not state then return {'NO_EVENT', '', 0, 0, 0, 0} end
   if state == 'closed' then return {'CLOSED', '', 0, 0, 0, 0} end
   local now = now_ms()
+  local served = int(server.call('GET', servedk))
   local attached = server.call('HEXISTS', accts, 'd:' .. device)
   local function fail(code) return {code, '', 0, 0, attached, now} end
-
   local cur = server.call('HGET', devs, device)
+  -- a moved place reads EXPIRED here; the usecase tells MOVED apart (D-13)
+  if cur and string.sub(cur, 1, 2) == 'm:' then return fail('EXPIRED') end
+
+  if user ~= '' then
+    local dev_user = server.call('HGET', accts, 'd:' .. device)
+    if dev_user and dev_user ~= user then return fail('DEVICE_OTHER_ACCOUNT') end
+    local owner = server.call('HGET', accts, user)
+    if owner and owner ~= device then
+      local other = server.call('HGET', devs, owner)
+      local them = {login = me.login, accts = accts, device = owner}
+      if other == 'pre' or (other and live_place(other, hist, cfg, served, now, window, them))
+        or open_lease(leases, owner, now) then
+        return fail('ACCOUNT_ELSEWHERE')
+      end
+    end
+  end
+  -- After the checks: the window depends on the login time before this claim.
+  local function ok(s, units, ends)
+    if user ~= '' then
+      attach(accts, user, device, now, cfg)
+      attached = 1
+    end
+    return {'OK', s, units, ends, attached, now}
+  end
+
   if cur == 'x:' .. tseq then
     local mine = server.call('HGET', leases, 'd:' .. device)
     local raw = mine and server.call('HGET', leases, mine)
     local l = raw and parse_lease(raw)
     if l and l.seq == tonumber(tseq) and l.status ~= 'purged' and l.ends > now then
-      return {'OK', mine, l.units, l.ends, attached, now}
+      return ok(mine, l.units, l.ends)
     end
     return fail('EXPIRED')
   end
@@ -592,9 +686,8 @@ local function claim_v1(keys, args)
   if cur ~= tseq then return fail('EXPIRED') end
 
   local seq = tonumber(tseq)
-  local served = int(server.call('GET', servedk))
   if seq > served then return fail('NOT_YET') end
-  local _, missed = turn(hist, cfg, seq, served, now, int(args[5]))
+  local _, missed = turn(hist, cfg, seq, served, now, window, me)
   if missed then return fail('MISSED') end
 
   if server.call('ZCARD', active) >= int(server.call('HGET', cfg, 'maxSlots')) then return fail('FULL') end
@@ -611,7 +704,7 @@ local function claim_v1(keys, args)
   server.call('HSET', devs, device, 'x:' .. tseq)
   server.call('ZADD', claimed, seq, slot)
   for _, k in ipairs({active, leases, claimed}) do ensure_expiry(k, cfg) end
-  return {'OK', slot, units, ends, attached, now}
+  return ok(slot, units, ends)
 end
 
 -- rusuh_lottery_v1: the pre-open draw (NFR-05). Once opensAt has passed, give up to

@@ -27,7 +27,7 @@ func TestConcurrentJoinsOneDevice(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 10000 {
 		wg.Go(func() {
-			r, err := s.Join(context.Background(), k, "w_same", "", miss)
+			r, err := s.Join(context.Background(), k, "w_same", "", dto.Windows{Miss: miss})
 			if err != nil || r.Status != dto.JoinOK {
 				t.Errorf("join = %+v, %v", r, err)
 				return
@@ -58,7 +58,7 @@ func TestConcurrentJoinsManyDevices(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range n {
 		wg.Go(func() {
-			r, err := s.Join(context.Background(), k, fmt.Sprintf("w_dev%05d", i), "", miss)
+			r, err := s.Join(context.Background(), k, fmt.Sprintf("w_dev%05d", i), "", dto.Windows{Miss: miss})
 			if err != nil || r.Status != dto.JoinOK {
 				t.Errorf("join %d = %+v, %v", i, r, err)
 				return
@@ -82,48 +82,48 @@ func TestJoinRules(t *testing.T) {
 	k := testkit.Event(t, client, "evt_rules", testkit.EventOpts{})
 
 	t.Run("account on a second device is refused", func(t *testing.T) {
-		if r, _ := s.Join(ctx, k, "w_phone", "user1", miss); r.Status != dto.JoinOK || !r.Attached {
+		if r, _ := s.Join(ctx, k, "w_phone", "user1", dto.Windows{Miss: miss}); r.Status != dto.JoinOK || !r.Attached {
 			t.Fatalf("first = %+v", r)
 		}
-		if r, _ := s.Join(ctx, k, "w_laptop", "user1", miss); r.Status != dto.JoinAccountElsewhere {
+		if r, _ := s.Join(ctx, k, "w_laptop", "user1", dto.Windows{Miss: miss}); r.Status != dto.JoinAccountElsewhere {
 			t.Fatalf("second device = %+v, want ACCOUNT_ELSEWHERE", r)
 		}
 	})
 
 	t.Run("guest attaches an account later without moving", func(t *testing.T) {
-		guest, _ := s.Join(ctx, k, "w_guest", "", miss)
+		guest, _ := s.Join(ctx, k, "w_guest", "", dto.Windows{Miss: miss})
 		if guest.Attached {
 			t.Fatal("guest must not be attached")
 		}
-		logged, _ := s.Join(ctx, k, "w_guest", "user2", miss)
+		logged, _ := s.Join(ctx, k, "w_guest", "user2", dto.Windows{Miss: miss})
 		if logged.Seq != guest.Seq || !logged.Attached {
 			t.Fatalf("after login = %+v, want same seq %d and attached", logged, guest.Seq)
 		}
-		again, _ := s.Join(ctx, k, "w_guest", "", miss)
+		again, _ := s.Join(ctx, k, "w_guest", "", dto.Windows{Miss: miss})
 		if !again.Attached {
 			t.Fatal("a guest call on an attached place must report accountAttached")
 		}
 	})
 
 	t.Run("another account on an attached device is refused", func(t *testing.T) {
-		if r, _ := s.Join(ctx, k, "w_guest", "user3", miss); r.Status != dto.JoinDeviceOtherAccount {
+		if r, _ := s.Join(ctx, k, "w_guest", "user3", dto.Windows{Miss: miss}); r.Status != dto.JoinDeviceOtherAccount {
 			t.Fatalf("got %+v, want DEVICE_OTHER_ACCOUNT", r)
 		}
 	})
 
 	t.Run("a used place rejoins at the back", func(t *testing.T) {
-		first, _ := s.Join(ctx, k, "w_used", "", miss)
+		first, _ := s.Join(ctx, k, "w_used", "", dto.Windows{Miss: miss})
 		hset(t, client, k.Devs, "w_used", fmt.Sprintf("x:%d", first.Seq))
-		again, _ := s.Join(ctx, k, "w_used", "", miss)
+		again, _ := s.Join(ctx, k, "w_used", "", dto.Windows{Miss: miss})
 		if again.Status != dto.JoinOK || again.Seq <= first.Seq {
 			t.Fatalf("rejoin = %+v, want a new seq after %d", again, first.Seq)
 		}
 	})
 
 	t.Run("the account moves once its old place is used", func(t *testing.T) {
-		phone, _ := s.Join(ctx, k, "w_phone", "user1", miss)
+		phone, _ := s.Join(ctx, k, "w_phone", "user1", dto.Windows{Miss: miss})
 		hset(t, client, k.Devs, "w_phone", fmt.Sprintf("x:%d", phone.Seq))
-		if r, _ := s.Join(ctx, k, "w_laptop", "user1", miss); r.Status != dto.JoinOK {
+		if r, _ := s.Join(ctx, k, "w_laptop", "user1", dto.Windows{Miss: miss}); r.Status != dto.JoinOK {
 			t.Fatalf("laptop after phone's place ended = %+v", r)
 		}
 	})
@@ -144,11 +144,11 @@ func TestJoinStates(t *testing.T) {
 	ctx := context.Background()
 
 	pre := testkit.Event(t, client, "evt_pre", testkit.EventOpts{OpensIn: time.Hour})
-	r, _ := s.Join(ctx, pre, "w_early", "", miss)
+	r, _ := s.Join(ctx, pre, "w_early", "", dto.Windows{Miss: miss})
 	if r.Status != dto.JoinPre {
 		t.Fatalf("preopen join = %+v, want PRE", r)
 	}
-	if again, _ := s.Join(ctx, pre, "w_early", "", miss); again.Status != dto.JoinPre {
+	if again, _ := s.Join(ctx, pre, "w_early", "", dto.Windows{Miss: miss}); again.Status != dto.JoinPre {
 		t.Fatalf("second preopen join = %+v", again)
 	}
 	members, _ := client.Do(ctx, client.B().Smembers().Key(pre.Pre).Build()).AsStrSlice()
@@ -157,10 +157,10 @@ func TestJoinStates(t *testing.T) {
 	}
 
 	closed := testkit.Event(t, client, "evt_closed", testkit.EventOpts{Cancelled: true})
-	if r, _ := s.Join(ctx, closed, "w_x", "", miss); r.Status != dto.JoinClosed {
+	if r, _ := s.Join(ctx, closed, "w_x", "", dto.Windows{Miss: miss}); r.Status != dto.JoinClosed {
 		t.Fatalf("closed join = %+v", r)
 	}
-	if r, _ := s.Join(ctx, qkeys.For("evt_missing"), "w_x", "", miss); r.Status != dto.JoinNoEvent {
+	if r, _ := s.Join(ctx, qkeys.For("evt_missing"), "w_x", "", dto.Windows{Miss: miss}); r.Status != dto.JoinNoEvent {
 		t.Fatalf("missing event = %+v", r)
 	}
 }
@@ -171,15 +171,15 @@ func TestPlace(t *testing.T) {
 	ctx := context.Background()
 	k := testkit.Event(t, client, "evt_place", testkit.EventOpts{})
 
-	r, _ := s.Join(ctx, k, "w_a", "user9", miss)
-	v, err := s.Place(ctx, k, "w_a", miss)
+	r, _ := s.Join(ctx, k, "w_a", "user9", dto.Windows{Miss: miss})
+	v, err := s.Place(ctx, k, "w_a", dto.Windows{Miss: miss})
 	if err != nil || !v.Found || v.State != "open" || v.Value != fmt.Sprint(r.Seq) || !v.Attached || v.EndsAt.IsZero() {
 		t.Fatalf("place = %+v, %v", v, err)
 	}
-	if v, _ := s.Place(ctx, k, "w_nobody", miss); !v.Found || v.Value != "" {
+	if v, _ := s.Place(ctx, k, "w_nobody", dto.Windows{Miss: miss}); !v.Found || v.Value != "" {
 		t.Fatalf("no place = %+v", v)
 	}
-	if v, _ := s.Place(ctx, qkeys.For("evt_missing"), "w_a", miss); v.Found {
+	if v, _ := s.Place(ctx, qkeys.For("evt_missing"), "w_a", dto.Windows{Miss: miss}); v.Found {
 		t.Fatalf("missing event = %+v", v)
 	}
 }
@@ -204,7 +204,7 @@ func hset(t *testing.T, client vk.Client, key, field, value string) {
 const miss = time.Minute
 
 func claimIn(device string, seq int64, slot string) dto.ClaimInput {
-	return dto.ClaimInput{DeviceID: device, TokenSeq: seq, SlotID: slot, OrderWindow: 5 * time.Minute, MissWindow: 5 * time.Minute}
+	return dto.ClaimInput{DeviceID: device, TokenSeq: seq, SlotID: slot, OrderWindow: 5 * time.Minute, Windows: dto.Windows{Miss: 5 * time.Minute}}
 }
 
 // M3 verify: 1,000 concurrent claims for 2 units → exactly 2 units reserved,
@@ -324,7 +324,7 @@ func TestClaimMissed(t *testing.T) {
 	testkit.Tick(t, client, k, testkit.TickArgs{}) // served 1
 	time.Sleep(300 * time.Millisecond)
 	in := claimIn("w_m0", 1, "s_a")
-	in.MissWindow = 200 * time.Millisecond
+	in.Windows.Miss = 200 * time.Millisecond
 	if r, _ := s.Claim(ctx, k, in); r.Status != dto.ClaimMissed {
 		t.Fatalf("claim 300 ms after the turn with a 200 ms window = %s, want MISSED", r.Status)
 	}
@@ -352,12 +352,12 @@ func TestMissedPlaceRejoinsAtBack(t *testing.T) {
 	k := testkit.Event(t, client, "evt_rejoin", testkit.EventOpts{})
 	short := 200 * time.Millisecond
 
-	first, _ := s.Join(ctx, k, "w_phone", "user1", short)
+	first, _ := s.Join(ctx, k, "w_phone", "user1", dto.Windows{Miss: short})
 	if first.Seq != 1 || !first.TurnEnds.IsZero() {
 		t.Fatalf("join = %+v, want seq 1 and no turn yet", first)
 	}
 	testkit.Tick(t, client, k, testkit.TickArgs{})
-	reached, _ := s.Join(ctx, k, "w_phone", "user1", short)
+	reached, _ := s.Join(ctx, k, "w_phone", "user1", dto.Windows{Miss: short})
 	if reached.Seq != 1 || reached.Served != 1 || reached.TurnEnds.IsZero() {
 		t.Fatalf("after the turn = %+v, want seq 1 with turnEnds", reached)
 	}
@@ -366,18 +366,18 @@ func TestMissedPlaceRejoinsAtBack(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	v, _ := s.Place(ctx, k, "w_phone", short)
+	v, _ := s.Place(ctx, k, "w_phone", dto.Windows{Miss: short})
 	if !v.Missed || v.Value != "1" {
 		t.Fatalf("place = %+v, want missed", v)
 	}
-	if r, _ := s.Join(ctx, k, "w_laptop", "user1", short); r.Status != dto.JoinOK || r.Seq != 2 {
+	if r, _ := s.Join(ctx, k, "w_laptop", "user1", dto.Windows{Miss: short}); r.Status != dto.JoinOK || r.Seq != 2 {
 		t.Fatalf("account on another device after a missed turn = %+v, want a new place", r)
 	}
-	if r, _ := s.Join(ctx, k, "w_other", "", short); r.Seq != 3 {
+	if r, _ := s.Join(ctx, k, "w_other", "", dto.Windows{Miss: short}); r.Seq != 3 {
 		t.Fatalf("seq = %d", r.Seq)
 	}
 	// With the production window the same place is still live.
-	if v, _ := s.Place(ctx, k, "w_phone", miss); v.Missed {
+	if v, _ := s.Place(ctx, k, "w_phone", dto.Windows{Miss: miss}); v.Missed {
 		t.Fatal("missed within the production 60 s window")
 	}
 }
@@ -389,24 +389,24 @@ func TestLeave(t *testing.T) {
 	ctx := context.Background()
 
 	k := testkit.Event(t, client, "evt_leave", testkit.EventOpts{})
-	_, _ = s.Join(ctx, k, "w_a", "user1", miss)
+	_, _ = s.Join(ctx, k, "w_a", "user1", dto.Windows{Miss: miss})
 	for range 2 { // idempotent
 		if found, err := s.Leave(ctx, k, "w_a"); err != nil || !found {
 			t.Fatalf("leave = %v, %v", found, err)
 		}
 	}
-	if v, _ := s.Place(ctx, k, "w_a", miss); v.Value != "x:1" {
+	if v, _ := s.Place(ctx, k, "w_a", dto.Windows{Miss: miss}); v.Value != "x:1" {
 		t.Fatalf("place after leave = %q", v.Value)
 	}
-	if r, _ := s.Join(ctx, k, "w_b", "user1", miss); r.Status != dto.JoinOK {
+	if r, _ := s.Join(ctx, k, "w_b", "user1", dto.Windows{Miss: miss}); r.Status != dto.JoinOK {
 		t.Fatalf("account on another device after leaving = %s", r.Status)
 	}
-	if r, _ := s.Join(ctx, k, "w_a", "", miss); r.Seq != 3 {
+	if r, _ := s.Join(ctx, k, "w_a", "", dto.Windows{Miss: miss}); r.Seq != 3 {
 		t.Fatalf("rejoin seq = %d, want 3 (back of the queue)", r.Seq)
 	}
 
 	pre := testkit.Event(t, client, "evt_leave_pre", testkit.EventOpts{OpensIn: time.Hour})
-	_, _ = s.Join(ctx, pre, "w_p", "", miss)
+	_, _ = s.Join(ctx, pre, "w_p", "", dto.Windows{Miss: miss})
 	_, _ = s.Leave(ctx, pre, "w_p")
 	if n, _ := client.Do(ctx, client.B().Scard().Key(pre.Pre).Build()).AsInt64(); n != 0 {
 		t.Fatalf("draw list = %d after leaving, want 0", n)

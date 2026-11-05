@@ -21,6 +21,7 @@ import (
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/api"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
+	queueoutbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/outbound"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/testkit"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/ratelimit"
@@ -72,7 +73,10 @@ type queueEnv struct {
 	core   *fakeCore
 }
 
-// queueConfig is the production configuration with a given order and miss window.
+// queueConfig is the production configuration with a given order and miss window,
+// except that guests may still claim (ClaimRequiresLogin off) and every device gets
+// the miss window (no LoginWindow): the older flow tests rely on both. ADR-0021
+// tests turn them on (login_claim_test.go).
 func queueConfig(orderWindow, missWindow time.Duration) entity.Config {
 	return entity.Config{
 		JoinPerDevice:  ratelimit.Rule{Scope: "join:dev", Limit: 30, Window: time.Minute},
@@ -91,17 +95,24 @@ func newQueueEnv(t *testing.T) queueEnv {
 
 func newQueueEnvOn(t *testing.T, client vk.Client, cfg entity.Config) queueEnv {
 	t.Helper()
+	return newQueueEnvWith(t, client, cfg, nil)
+}
+
+// newQueueEnvWith also records admissions in core (registerAdmission); nil keeps it off.
+func newQueueEnvWith(t *testing.T, client vk.Client, cfg entity.Config, admissions queueoutbound.IAdmissions) queueEnv {
+	t.Helper()
 	k, _ := token.GenerateKey("k1")
 	keys, _ := token.NewKeyring(k)
 	core := newFakeCore(t)
 
 	mux := http.NewServeMux()
 	delivery.RegisterQueue(mux, delivery.QueueDeps{
-		Config:  cfg,
-		Valkey:  client,
-		Signer:  keys,
-		Limiter: ratelimit.New(client),
-		Auth:    auth.New(keys, remotejwks.New(core.srv.URL)),
+		Config:     cfg,
+		Valkey:     client,
+		Signer:     keys,
+		Limiter:    ratelimit.New(client),
+		Auth:       auth.New(keys, remotejwks.New(core.srv.URL)),
+		Admissions: admissions,
 	})
 	return queueEnv{mux: mux, client: client, keys: keys, core: core}
 }
@@ -133,6 +144,7 @@ type placeBody struct {
 	Seq             *int64 `json:"seq"`
 	QueueToken      string `json:"queueToken"`
 	AccountAttached bool   `json:"accountAttached"`
+	Claimed         bool   `json:"claimed"`
 }
 
 func decodePlace(t *testing.T, rec *httptest.ResponseRecorder) placeBody {
@@ -258,7 +270,8 @@ func TestJoinWhenCoreKeysUnavailable(t *testing.T) {
 	}
 }
 
-// M2 verify: a second device for the same account gets 409 (BR-07, Q-51).
+// BR-07, Q-51: one place per account. Since 5 Nov a login on a second device moves
+// the place there without asking; once the move cap (1) is used, a third device gets 409.
 func TestAccountAttachAndSecondDevice(t *testing.T) {
 	e := newQueueEnv(t)
 	testkit.Event(t, e.client, "evt_acct", testkit.EventOpts{})
@@ -270,9 +283,13 @@ func TestAccountAttachAndSecondDevice(t *testing.T) {
 		t.Fatalf("login moved the place or did not attach: guest %d, logged %+v", *guest.Seq, logged)
 	}
 
-	rec := e.do("POST", "/v1/queue/evt_acct/join", map[string]string{"X-Device-Token": e.deviceToken(t, "w_laptop"), "Authorization": bearer})
+	moved := decodePlace(t, e.do("POST", "/v1/queue/evt_acct/join", map[string]string{"X-Device-Token": e.deviceToken(t, "w_laptop"), "Authorization": bearer}))
+	if *moved.Seq != *guest.Seq || !moved.AccountAttached {
+		t.Fatalf("second device: %+v, want the moved place %d", moved, *guest.Seq)
+	}
+	rec := e.do("POST", "/v1/queue/evt_acct/join", map[string]string{"X-Device-Token": e.deviceToken(t, "w_tablet"), "Authorization": bearer})
 	if rec.Code != http.StatusConflict || problemCode(t, rec) != api.ErrorCodeACCOUNTHASPLACEELSEWHERE {
-		t.Fatalf("second device: status %d", rec.Code)
+		t.Fatalf("third device: status %d", rec.Code)
 	}
 }
 

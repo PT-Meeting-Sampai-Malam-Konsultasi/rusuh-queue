@@ -21,5 +21,6 @@ type IQueueUsecase interface {
 	Frontier(ctx context.Context, eventID string) ([]byte, error)
 	// Claim reserves up to 3 units for the device's reached turn and signs an
 	// admission token for core; a retry returns the same slot.
-	Claim(ctx context.Context, eventID, deviceID string, tokenSeq int64) (*entity.Admission, error)
+	// Claim takes userID "" for a guest, refused when an account is required (ADR-0021).
+	Claim(ctx context.Context, eventID, deviceID, userID string, tokenSeq int64) (*entity.Admission, error)
 }

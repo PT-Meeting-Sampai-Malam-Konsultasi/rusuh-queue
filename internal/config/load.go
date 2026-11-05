@@ -41,8 +41,13 @@ func Load() *Config {
 		CORSOrigins:       getList("CORS_ORIGINS"),
 
 		CoreJWKSURL:            os.Getenv("CORE_JWKS_URL"),
+		CoreInternalURL:        os.Getenv("CORE_INTERNAL_URL"),
+		CoreInternalToken:      os.Getenv("CORE_INTERNAL_TOKEN"),
+		CoreAdmissionTimeout:   getDuration("CORE_ADMISSION_TIMEOUT", time.Second),
 		RLJoinPerDevice:        getInt("RL_JOIN_PER_DEVICE", 30),
 		PlaceTransfersPerEvent: getInt("PLACE_TRANSFERS_PER_EVENT", 1),
+		LoginWindow:            getDuration("LOGIN_WINDOW", 3*time.Minute),
+		ClaimRequiresLogin:     getBool("CLAIM_REQUIRES_LOGIN", true),
 		RLClaimPerDevice:       getInt("RL_CLAIM_PER_DEVICE", 60),
 
 		Tick:        getDuration("TICK", time.Second),

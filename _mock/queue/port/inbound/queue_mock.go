@@ -42,18 +42,18 @@ func (m *MockIQueueUsecase) EXPECT() *MockIQueueUsecaseMockRecorder {
 }
 
 // Claim mocks base method.
-func (m *MockIQueueUsecase) Claim(ctx context.Context, eventID, deviceID string, tokenSeq int64) (*entity.Admission, error) {
+func (m *MockIQueueUsecase) Claim(ctx context.Context, eventID, deviceID, userID string, tokenSeq int64) (*entity.Admission, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Claim", ctx, eventID, deviceID, tokenSeq)
+	ret := m.ctrl.Call(m, "Claim", ctx, eventID, deviceID, userID, tokenSeq)
 	ret0, _ := ret[0].(*entity.Admission)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Claim indicates an expected call of Claim.
-func (mr *MockIQueueUsecaseMockRecorder) Claim(ctx, eventID, deviceID, tokenSeq any) *gomock.Call {
+func (mr *MockIQueueUsecaseMockRecorder) Claim(ctx, eventID, deviceID, userID, tokenSeq any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Claim", reflect.TypeOf((*MockIQueueUsecase)(nil).Claim), ctx, eventID, deviceID, tokenSeq)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Claim", reflect.TypeOf((*MockIQueueUsecase)(nil).Claim), ctx, eventID, deviceID, userID, tokenSeq)
 }
 
 // Frontier mocks base method.

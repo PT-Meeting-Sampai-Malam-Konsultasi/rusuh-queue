@@ -12,7 +12,6 @@ package mock_outbound
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	dto "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/dto"
 	qkeys "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/qkeys"
@@ -76,18 +75,18 @@ func (mr *MockIQueueStoreMockRecorder) Frontier(ctx, k any) *gomock.Call {
 }
 
 // Join mocks base method.
-func (m *MockIQueueStore) Join(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration) (dto.JoinResult, error) {
+func (m *MockIQueueStore) Join(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows) (dto.JoinResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Join", ctx, k, deviceID, userID, missWindow)
+	ret := m.ctrl.Call(m, "Join", ctx, k, deviceID, userID, w)
 	ret0, _ := ret[0].(dto.JoinResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Join indicates an expected call of Join.
-func (mr *MockIQueueStoreMockRecorder) Join(ctx, k, deviceID, userID, missWindow any) *gomock.Call {
+func (mr *MockIQueueStoreMockRecorder) Join(ctx, k, deviceID, userID, w any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Join", reflect.TypeOf((*MockIQueueStore)(nil).Join), ctx, k, deviceID, userID, missWindow)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Join", reflect.TypeOf((*MockIQueueStore)(nil).Join), ctx, k, deviceID, userID, w)
 }
 
 // Leave mocks base method.
@@ -106,33 +105,33 @@ func (mr *MockIQueueStoreMockRecorder) Leave(ctx, k, deviceID any) *gomock.Call 
 }
 
 // Place mocks base method.
-func (m *MockIQueueStore) Place(ctx context.Context, k qkeys.Event, deviceID string, missWindow time.Duration) (dto.PlaceView, error) {
+func (m *MockIQueueStore) Place(ctx context.Context, k qkeys.Event, deviceID string, w dto.Windows) (dto.PlaceView, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Place", ctx, k, deviceID, missWindow)
+	ret := m.ctrl.Call(m, "Place", ctx, k, deviceID, w)
 	ret0, _ := ret[0].(dto.PlaceView)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Place indicates an expected call of Place.
-func (mr *MockIQueueStoreMockRecorder) Place(ctx, k, deviceID, missWindow any) *gomock.Call {
+func (mr *MockIQueueStoreMockRecorder) Place(ctx, k, deviceID, w any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Place", reflect.TypeOf((*MockIQueueStore)(nil).Place), ctx, k, deviceID, missWindow)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Place", reflect.TypeOf((*MockIQueueStore)(nil).Place), ctx, k, deviceID, w)
 }
 
 // Transfer mocks base method.
-func (m *MockIQueueStore) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, missWindow time.Duration, perEvent int64) (dto.JoinResult, error) {
+func (m *MockIQueueStore) Transfer(ctx context.Context, k qkeys.Event, deviceID, userID string, w dto.Windows, perEvent int64) (dto.JoinResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Transfer", ctx, k, deviceID, userID, missWindow, perEvent)
+	ret := m.ctrl.Call(m, "Transfer", ctx, k, deviceID, userID, w, perEvent)
 	ret0, _ := ret[0].(dto.JoinResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Transfer indicates an expected call of Transfer.
-func (mr *MockIQueueStoreMockRecorder) Transfer(ctx, k, deviceID, userID, missWindow, perEvent any) *gomock.Call {
+func (mr *MockIQueueStoreMockRecorder) Transfer(ctx, k, deviceID, userID, w, perEvent any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transfer", reflect.TypeOf((*MockIQueueStore)(nil).Transfer), ctx, k, deviceID, userID, missWindow, perEvent)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transfer", reflect.TypeOf((*MockIQueueStore)(nil).Transfer), ctx, k, deviceID, userID, w, perEvent)
 }
 
 // MockISigner is a mock of ISigner interface.
@@ -172,6 +171,44 @@ func (m *MockISigner) Sign(kind token.Kind, claims token.Claims) (string, error)
 func (mr *MockISignerMockRecorder) Sign(kind, claims any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sign", reflect.TypeOf((*MockISigner)(nil).Sign), kind, claims)
+}
+
+// MockIAdmissions is a mock of IAdmissions interface.
+type MockIAdmissions struct {
+	ctrl     *gomock.Controller
+	recorder *MockIAdmissionsMockRecorder
+	isgomock struct{}
+}
+
+// MockIAdmissionsMockRecorder is the mock recorder for MockIAdmissions.
+type MockIAdmissionsMockRecorder struct {
+	mock *MockIAdmissions
+}
+
+// NewMockIAdmissions creates a new mock instance.
+func NewMockIAdmissions(ctrl *gomock.Controller) *MockIAdmissions {
+	mock := &MockIAdmissions{ctrl: ctrl}
+	mock.recorder = &MockIAdmissionsMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIAdmissions) EXPECT() *MockIAdmissionsMockRecorder {
+	return m.recorder
+}
+
+// Register mocks base method.
+func (m *MockIAdmissions) Register(ctx context.Context, rec dto.AdmissionRecord) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Register", ctx, rec)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Register indicates an expected call of Register.
+func (mr *MockIAdmissionsMockRecorder) Register(ctx, rec any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockIAdmissions)(nil).Register), ctx, rec)
 }
 
 // MockIRateLimiter is a mock of IRateLimiter interface.
