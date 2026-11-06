@@ -61,6 +61,13 @@ type Config struct {
 	RLDevicePerIP     int64 // registrations per minute per IP
 	RLDevicePerSubnet int64 // registrations per minute per /24 (IPv4) or /48 (IPv6)
 
+	// Stream (ADR-0015). StreamDrain spreads closing open streams after SIGTERM; it must stay below ShutdownTimeout.
+	StreamMaxPerTask  int64
+	StreamLifetime    time.Duration
+	StreamHeartbeat   time.Duration
+	StreamDrain       time.Duration
+	RLStreamPerDevice int64
+
 	// ShutdownTimeout bounds the drain after SIGTERM. Keep it below the
 	// orchestrator's grace period (lab: 45 s, ECS stopTimeout: 45 s).
 	ShutdownTimeout time.Duration

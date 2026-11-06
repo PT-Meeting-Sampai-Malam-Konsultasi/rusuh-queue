@@ -972,7 +972,7 @@ type QueueTurn struct {
 	Served    int       `json:"served"`
 	ServerNow time.Time `json:"serverNow"`
 
-	// TurnExpiresAt Claim before this or the turn is MISSED (60 s)
+	// TurnExpiresAt Claim before this or the turn is MISSED: 60 s for a device logged in before its turn, LOGIN_WINDOW (3 min) otherwise (ADR-0021)
 	TurnExpiresAt time.Time `json:"turnExpiresAt"`
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/api"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 	queueoutbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/outbound"
+	streamentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/stream/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/testkit"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/ratelimit"
@@ -106,13 +107,17 @@ func newQueueEnvWith(t *testing.T, client vk.Client, cfg entity.Config, admissio
 	core := newFakeCore(t)
 
 	mux := http.NewServeMux()
-	delivery.RegisterQueue(mux, delivery.QueueDeps{
+	verifier := auth.New(keys, remotejwks.New(core.srv.URL))
+	q := delivery.RegisterQueue(mux, delivery.QueueDeps{
 		Config:     cfg,
 		Valkey:     client,
 		Signer:     keys,
 		Limiter:    ratelimit.New(client),
-		Auth:       auth.New(keys, remotejwks.New(core.srv.URL)),
+		Auth:       verifier,
 		Admissions: admissions,
+	})
+	delivery.RegisterStream(mux, delivery.StreamDeps{
+		Config: streamentity.DefaultConfig(), Valkey: client, Queue: q, Limiter: ratelimit.New(client), Auth: verifier,
 	})
 	return queueEnv{mux: mux, client: client, keys: keys, core: core}
 }

@@ -61,8 +61,9 @@ func main() {
 	<-quit
 	slog.Info("Shutting down server...")
 
-	// 1. Fail readiness first so the load balancer stops routing new requests here.
-	app.Health.Drain()
+	// 1. Fail readiness so the load balancer stops routing new requests here, and
+	// end the open streams over STREAM_DRAIN (Shutdown waits for them).
+	app.Drain()
 
 	// 2. Stop accepting connections and wait for in-flight requests.
 	ctxShutdown, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)

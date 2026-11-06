@@ -10,6 +10,7 @@ import (
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/infrastructure/coreapi"
 	queuehttp "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/infrastructure/http"
 	queuevalkey "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/infrastructure/valkey"
+	queueinbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/inbound"
 	queueoutbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/outbound"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 )
@@ -26,11 +27,13 @@ type QueueDeps struct {
 }
 
 // RegisterQueue wires the Valkey store → usecase → handler and registers join, me, leave, frontier and claim.
-func RegisterQueue(mux *http.ServeMux, d QueueDeps) {
+// It returns the usecase, which the stream reads places and frontiers through.
+func RegisterQueue(mux *http.ServeMux, d QueueDeps) queueinbound.IQueueUsecase {
 	admissions := d.Admissions
 	if admissions == nil {
 		admissions = coreapi.Disabled{}
 	}
 	uc := queueusecase.NewQueue(d.Config, queuevalkey.New(d.Valkey), d.Signer, d.Limiter, admissions)
 	queuehttp.RegisterRoutes(mux, queuehttp.NewQueue(uc, d.Auth))
+	return uc
 }

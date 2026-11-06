@@ -14,6 +14,7 @@ import (
 	queueentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/infrastructure/coreapi"
 	queueoutbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/port/outbound"
+	streamentity "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/stream/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/attest"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/auth"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/clientip"
@@ -72,7 +73,10 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 		ClientIP: ipResolver,
 	})
 
-	RegisterQueue(mux, QueueDeps{
+	if cfg.StreamDrain >= cfg.ShutdownTimeout {
+		return fmt.Errorf("STREAM_DRAIN (%s) must be shorter than SHUTDOWN_TIMEOUT (%s)", cfg.StreamDrain, cfg.ShutdownTimeout)
+	}
+	queueUsecase := RegisterQueue(mux, QueueDeps{
 		Config: queueentity.Config{
 			JoinPerDevice:      ratelimit.Rule{Scope: "join:dev", Limit: cfg.RLJoinPerDevice, Window: time.Minute},
 			ClaimPerDevice:     ratelimit.Rule{Scope: "claim:dev", Limit: cfg.RLClaimPerDevice, Window: time.Minute},
@@ -88,7 +92,15 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 		Auth:       verifier,
 		Admissions: admissions,
 	})
-	RegisterStream(mux)
+	streamConfig := streamentity.Config{
+		MaxPerTask:       int(cfg.StreamMaxPerTask),
+		Lifetime:         cfg.StreamLifetime,
+		Heartbeat:        cfg.StreamHeartbeat,
+		Buffer:           streamentity.DefaultConfig().Buffer,
+		DrainOver:        cfg.StreamDrain,
+		ConnectPerDevice: ratelimit.Rule{Scope: "stream:dev", Limit: cfg.RLStreamPerDevice, Window: time.Minute},
+	}
+	s.stream = RegisterStream(mux, StreamDeps{Config: streamConfig, Valkey: s.valkey, Queue: queueUsecase, Limiter: limiter, Auth: verifier})
 
 	adminUsecase := NewAdmin(s.db, s.valkey)
 	adminAuth := auth.NewAdmin(cfg.AdminJWKSURL, cfg.AdminIssuer)

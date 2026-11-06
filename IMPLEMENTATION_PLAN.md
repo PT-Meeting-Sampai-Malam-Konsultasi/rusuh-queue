@@ -253,7 +253,7 @@ Runs in every task; per live event exactly one leader does the work.
 `HTTP_ADDR`, `ADMIN_ADDR`, `VALKEY_ADDR`, `VALKEY_PASSWORD`, `DATABASE_URL` (role `queue_rw`, `queue` schema
 only), `SIGNING_KEYS` (Ed25519 PEMs with `kid`, current first), `CORE_JWKS_URL`,
 `TURNSTILE_SECRET`, `ATTESTOR=sandbox|real`, `CORS_ORIGINS`, `STREAM_MAX_PER_TASK=5000`, `STREAM_LIFETIME=10m`,
-`HEARTBEAT=15s`, `TICK=1s`, `RECONCILE_EVERY=10s`, `SNAPSHOT_MAX_AGE=30s`, `PURGE_GRACE=30s`, `ORDER_WINDOW=5m`,
+`STREAM_HEARTBEAT=15s`, `STREAM_DRAIN=25s` (below `SHUTDOWN_TIMEOUT`), `RL_STREAM_PER_DEVICE=12`, `TICK=1s`, `RECONCILE_EVERY=10s`, `SNAPSHOT_MAX_AGE=30s`, `PURGE_GRACE=30s`, `ORDER_WINDOW=5m`,
 `MISS_WINDOW=60s` (MISSED for a device logged in before its turn), `LOGIN_WINDOW=3m` (every other device; D-7 invitations use the longer of the two; ADR-0021), `CLAIM_REQUIRES_LOGIN=true`,
 `CORE_INTERNAL_URL`, `CORE_INTERNAL_TOKEN`, `CORE_ADMISSION_TIMEOUT=1s` (registerAdmission, ADR-0020), `RATE_WINDOW=5m` (`ratePerMin`, history kept), `RATE_PRIOR_ORDER_TIME=6m` (warm-up speed guess, 0 = off), `RL_JOIN_PER_DEVICE=30`, `RL_CLAIM_PER_DEVICE=60`, `TRUSTED_PROXY_CIDRS`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
 `GOMEMLIMIT`.
@@ -438,7 +438,9 @@ and `unreserved + resv == PostgreSQL available` once no event is in flight (rese
 
 ### M5 — Stream, admin, lottery (Mon 9 – Tue 10 Nov)
 
-- [ ] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain).
+- [x] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain), 6 Nov: `internal/stream`.
+  Unit tests (hub, handler) and the integration test `TestStreamDeliversFrontiersAndTheTurn` (real Valkey, controller
+  ticking) pass; the latter is mutation-checked (no subscription → no turn).
 - [x] `adminUpdateQueue` on the private listener (`ADMIN_PORT`), audit columns in `event_queue_config` (1 Nov).
 - [x] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` and `claimTurn` after the draw (1 Nov).
 

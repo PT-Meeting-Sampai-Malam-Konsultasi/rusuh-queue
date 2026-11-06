@@ -14,6 +14,7 @@ import (
 	vk "github.com/valkey-io/valkey-go"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
+	streaminbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/stream/port/inbound"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/clientip"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/database"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/health"
@@ -31,7 +32,18 @@ type Server struct {
 
 	db         *sql.DB
 	valkey     vk.Client
+	stream     streaminbound.IStreamUsecase
 	background []func(ctx context.Context) error
+}
+
+// Drain starts the shutdown: readiness fails so the load balancer stops sending
+// requests, and open streams end spread over STREAM_DRAIN, so http.Server.Shutdown
+// can finish (it waits for every open stream).
+func (s *Server) Drain() {
+	s.Health.Drain()
+	if s.stream != nil {
+		s.stream.Drain()
+	}
 }
 
 // New connects PostgreSQL and Valkey, checks the settings that must be right

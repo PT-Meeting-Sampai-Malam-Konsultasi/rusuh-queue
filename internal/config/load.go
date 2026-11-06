@@ -67,6 +67,12 @@ func Load() *Config {
 
 		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 30*time.Second),
 
+		StreamMaxPerTask:  getInt("STREAM_MAX_PER_TASK", 5000),
+		StreamLifetime:    getDuration("STREAM_LIFETIME", 10*time.Minute),
+		StreamHeartbeat:   getDuration("STREAM_HEARTBEAT", 15*time.Second),
+		StreamDrain:       getDuration("STREAM_DRAIN", 25*time.Second),
+		RLStreamPerDevice: getInt("RL_STREAM_PER_DEVICE", 12),
+
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
 		LogFormat:           getEnv("LOG_FORMAT", "text"),
 		OtelExporterType:    getEnv("OTEL_EXPORTER_TYPE", "stdout"),
