@@ -100,3 +100,10 @@ func startReachable(ctx context.Context, req testcontainers.ContainerRequest, po
 	}
 	return "", lastErr
 }
+
+// ValkeyAddr is the shared Valkey's host:port, flushed like Valkey.
+func ValkeyAddr(t *testing.T) string {
+	t.Helper()
+	Valkey(t)
+	return valkeyAddr
+}

@@ -101,3 +101,10 @@ func migrationFiles() ([]string, error) {
 	sort.Strings(files)
 	return files, nil
 }
+
+// PostgresDSN is the shared PostgreSQL's URL, migrated and emptied like Postgres.
+func PostgresDSN(t *testing.T) string {
+	t.Helper()
+	Postgres(t)
+	return pgDSN
+}
