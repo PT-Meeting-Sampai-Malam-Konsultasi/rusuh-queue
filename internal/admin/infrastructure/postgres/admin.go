@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/admin/domain/entity"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/admin/infrastructure/postgres/sqlcgen"
@@ -33,11 +34,17 @@ func (r *adminRepository) GetSettings(ctx context.Context, eventID string) (*ent
 }
 
 func (r *adminRepository) SaveSettings(ctx context.Context, s entity.Settings, by, reason string) error {
+	maxSlots, okSlots := toInt32(s.MaxSlots)
+	rateCap, okRate := toInt32(s.RateCap)
+	streamFrom, okStream := toInt32(s.StreamFrom)
+	if !okSlots || !okRate || !okStream {
+		return fmt.Errorf("save queue settings %s: %w", s.EventID, entity.ErrInvalidSettings)
+	}
 	_, err := r.q.UpsertEventQueueConfig(ctx, sqlcgen.UpsertEventQueueConfigParams{
 		EventID:    s.EventID,
-		MaxSlots:   int32(s.MaxSlots),
-		RateCap:    int32(s.RateCap),
-		StreamFrom: int32(s.StreamFrom),
+		MaxSlots:   maxSlots,
+		RateCap:    rateCap,
+		StreamFrom: streamFrom,
 		State:      s.State,
 		UpdatedBy:  by,
 		Reason:     sql.NullString{String: reason, Valid: reason != ""},
@@ -46,6 +53,13 @@ func (r *adminRepository) SaveSettings(ctx context.Context, s entity.Settings, b
 		return fmt.Errorf("save queue settings %s: %w", s.EventID, err)
 	}
 	return nil
+}
+
+func toInt32(v int64) (int32, bool) {
+	if v < math.MinInt32 || v > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(v), true
 }
 
 // toDomain converts a persistence row into the module's public domain entity.

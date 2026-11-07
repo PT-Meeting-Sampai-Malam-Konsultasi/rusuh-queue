@@ -6,3 +6,4 @@ coverage.out
 
 # Local stand-in for core (test tool, never shipped): see cmd/fakecore/main.go
 /cmd/fakecore/
+coverage.src.out
