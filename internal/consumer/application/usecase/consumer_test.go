@@ -155,6 +155,7 @@ func TestRunWaitsForTheGroupThenReadsAndRetries(t *testing.T) {
 	r := newRig(t)
 	r.svc.cfg.RetryEvery = time.Millisecond
 	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 
 	r.store.EXPECT().EnsureGroup(gomock.Any()).Return(errBoom)
 	r.store.EXPECT().EnsureGroup(gomock.Any()).Return(nil)
@@ -186,6 +187,7 @@ func TestRunWaitsForTheGroupThenReadsAndRetries(t *testing.T) {
 func TestRunStopsWhileWaiting(t *testing.T) {
 	r := newRig(t)
 	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	r.store.EXPECT().EnsureGroup(gomock.Any()).DoAndReturn(func(context.Context) error { cancel(); return errBoom })
 	if err := r.svc.Run(ctx); err != nil {
 		t.Fatal(err)
@@ -193,6 +195,7 @@ func TestRunStopsWhileWaiting(t *testing.T) {
 
 	r2 := newRig(t)
 	ctx2, cancel2 := context.WithCancel(t.Context())
+	defer cancel2()
 	r2.store.EXPECT().EnsureGroup(gomock.Any()).Return(nil)
 	r2.store.EXPECT().Read(gomock.Any()).DoAndReturn(func(context.Context) ([]dto.Message, error) {
 		go func() { time.Sleep(10 * time.Millisecond); cancel2() }()
