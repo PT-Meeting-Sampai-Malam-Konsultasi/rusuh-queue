@@ -33,6 +33,27 @@ jobs:
         make sqlc
         git diff --exit-code -- internal/
 
+  sonar:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: coverage
+        if: env.SONAR_TOKEN != ''
+        run: go test -p 2 -coverprofile=coverage.out ./...
+      - name: SonarQube Cloud scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v8
+      - if: env.SONAR_TOKEN == ''
+        run: echo "SonarQube Cloud scan skipped; SONAR_TOKEN is not set" >> "$GITHUB_STEP_SUMMARY"
+
   cd:
     needs: ci
     if: github.ref_type == 'tag'
