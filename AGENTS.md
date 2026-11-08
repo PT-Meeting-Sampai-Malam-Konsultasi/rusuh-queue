@@ -41,4 +41,9 @@ short version for this repo.
 
 ## Before you finish
 
-`make ci` (gofmt, golangci-lint, govulncheck, race tests, build), and `gofmt -w` on every Go file you changed.
+`make ci` (gofmt, golangci-lint, govulncheck, race tests with coverage, the 90% coverage gate, build), and `gofmt -w`
+on every Go file you changed. New code comes with its tests: `make cover` fails below `COVER_MIN` (90%), counted over
+hand-written code only (`api/`, `cmd/`, `_mock/`, `internal/testkit/` and `sqlcgen/` are left out).
+
+**CI** is the shared pipeline: `.github/workflows/ci.yml` calls `rusuh-infra`'s `backend-ci.yml` / `backend-cd.yml`
+(switches and inputs in `rusuh-infra/ci-cd/README.md`). `ci / checks` and `ci / image` are required on `main`.

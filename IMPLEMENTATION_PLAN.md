@@ -129,10 +129,10 @@ rusuh-queue/
 ├── db/migrations/                  # goose; also the schema sqlc reads
 ├── db/queries/<domain>/            # sqlc queries for controller and admin (consumer from M4)
 ├── test/integration/               # HTTP and controller tests on real Valkey and PostgreSQL
-├── .github/workflows/ci.yml        # gofmt, vet, golangci-lint, govulncheck, race tests, sqlc drift, multi-arch image
+├── .github/workflows/ci.yml        # calls rusuh-infra's shared backend-ci.yml / backend-cd.yml (CICD-01)
 ├── Dockerfile                      # distroless, non-root, cross-compiled amd64 + arm64
 ├── docker-compose.yml              # PostgreSQL 16, Valkey 8 (AOF off), app, Prism mock (profile "mock")
-└── Makefile                        # run, test, lint, vuln, gen, migrate-*, deps-up, mock-api, image, ci
+└── Makefile                        # run, test, test-cover, cover, lint, vuln, gen, migrate-*, deps-up, mock-api, image, ci
 ```
 
 Libraries: **Go 1.27** (`toolchain go1.27.3`, the latest patch with the current standard-library CVE fixes), std
@@ -448,6 +448,14 @@ and `unreserved + resv == PostgreSQL available` once no event is in flight (rese
 heartbeats; `turn` arrives within 1 s of `served` passing `seq`; a pod killed mid-stream → clients reconnect or poll
 with no lost place; `streamFrom = 0` → every connect gets 409; 1,000 pre-open devices get a random but complete order.
 
+### CICD-01-Q1 — Shared pipeline and coverage gate (done 7 Nov, PR #24)
+
+- [x] `ci.yml` calls `rusuh-infra`'s `backend-ci.yml` / `backend-cd.yml`; sqlc drift as `extra`, gosec as `sast`.
+- [x] gosec G115 fixed (range checks before int32); G404 excluded with the reason (jitter only).
+- [x] `make test-cover` + `make cover`: 90% gate over hand-written code; 39.6% → 94.8%.
+- [x] `CI_VULN=off` repo override checked; `ci / checks` and `ci / image` required on `main`.
+- [ ] Merge PR #24; move both `uses:` refs from `@feature/shared-ci-cd` to `@v1` once `rusuh-infra#5` is tagged.
+
 ### M6 — Hardening, load, handover (Wed 11 – Thu 12 Nov)
 
 - [ ] Security tests: forged and cross-device tokens, admission token used after `exp`, replayed claims, rate limits,
@@ -483,7 +491,7 @@ a drill; runbooks reviewed by Backend 2.
 
 | Level | Tool | Covers |
 | --- | --- | --- |
-| Unit | `go test`, table tests | advance rule, ETA, token claims, config |
+| Unit | `go test`, table tests, gomock | usecases, handlers, config, wiring; 90% gate (`make cover`) |
 | Lua | Testcontainers Valkey 8, `rapid` | every function, races, idempotency, invariants |
 | Integration | Testcontainers Valkey + PostgreSQL | controller + checkpoint + reconcile, consumer + DLQ |
 | Contract | `kin-openapi` response validation against `openapi.yaml` | every operation's status codes and bodies |

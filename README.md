@@ -62,6 +62,7 @@ make mock-api       # Prism on http://localhost:4010 (spec paths, no /v1 prefix)
 | Regenerate API types, sqlc, mocks | `make gen` (or `gen-api`, `sqlc`, `mock`) |
 | New table | add `db/migrations/0000N_<name>.sql` (goose), queries in `db/queries/<domain>/`, point `sqlc.yaml` at them, `make sqlc` |
 | Everything CI runs | `make ci` |
+| Coverage (gate: 90%) | `make test-cover` then `make cover` |
 | Images | `make image` (buildx, amd64 + arm64) |
 
 Requires Go 1.27 (the `toolchain` line downloads go1.27.3), Docker (integration tests start Valkey and PostgreSQL
