@@ -48,3 +48,47 @@ func TestRecordQueueGauges(t *testing.T) {
 		}
 	}
 }
+
+func TestTickHistogramsUseSecondScaleBuckets(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+
+	m := newMetrics()
+	ctx := context.Background()
+	m.duration.Record(ctx, 0.003)
+	m.lag.Record(ctx, 0.6)
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]float64{"tick_duration_seconds": 0.005, "tick_lag_seconds": 1}
+	for _, sm := range rm.ScopeMetrics {
+		for _, mt := range sm.Metrics {
+			upper, ok := want[mt.Name]
+			if !ok {
+				continue
+			}
+			delete(want, mt.Name)
+			h, ok := mt.Data.(metricdata.Histogram[float64])
+			if !ok || len(h.DataPoints) != 1 {
+				t.Fatalf("%s: want one histogram point, got %T", mt.Name, mt.Data)
+			}
+			dp := h.DataPoints[0]
+			got := -1.0
+			for i, c := range dp.BucketCounts {
+				if c == 1 && i < len(dp.Bounds) {
+					got = dp.Bounds[i]
+				}
+			}
+			if got != upper {
+				t.Errorf("%s: observation landed in bucket with upper bound %v, want %v (bounds %v)", mt.Name, got, upper, dp.Bounds)
+			}
+		}
+	}
+	for name := range want {
+		t.Errorf("%s not collected", name)
+	}
+}

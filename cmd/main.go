@@ -31,6 +31,7 @@ func main() {
 			LogsExporter:    cfg.OtelLogsExporter,
 			Endpoint:        cfg.OtelEndpoint,
 			Insecure:        true,
+			Resource:        map[string]string{"service.instance.id": cfg.ServiceInstanceID},
 		},
 	})
 	if err != nil {

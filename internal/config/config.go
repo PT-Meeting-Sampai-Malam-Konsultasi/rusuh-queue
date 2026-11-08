@@ -72,10 +72,12 @@ type Config struct {
 	// orchestrator's grace period (lab: 45 s, ECS stopTimeout: 45 s).
 	ShutdownTimeout time.Duration
 
-	LogLevel            string
-	LogFormat           string
-	OtelExporterType    string
-	OtelEndpoint        string
+	LogLevel         string
+	LogFormat        string
+	OtelExporterType string
+	OtelEndpoint     string
+	// ServiceInstanceID tells replicas apart in metrics (service.instance.id); defaults to the hostname.
+	ServiceInstanceID   string
 	OtelMetricsExporter string // overrides OtelExporterType for metrics; none turns them off
 	OtelTracesExporter  string // overrides OtelExporterType for traces
 	OtelLogsExporter    string // none (default) keeps logs on stdout only; otlp also ships them to the collector

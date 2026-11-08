@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"slices"
 	"testing"
 	"time"
@@ -34,5 +35,18 @@ func TestLoadFallsBackOnBadValues(t *testing.T) {
 	if c.Port != "8080" || c.LoginWindow != 3*time.Minute || c.RLJoinPerDevice != 30 || c.RLClaimPerDevice != 60 ||
 		!c.ClaimRequiresLogin || c.CORSOrigins != nil {
 		t.Fatalf("config = %+v", c)
+	}
+}
+
+func TestLoadServiceInstanceID(t *testing.T) {
+	t.Setenv("SERVICE_INSTANCE_ID", "")
+	host, _ := os.Hostname()
+	if got := Load().ServiceInstanceID; got == "" || got != host {
+		t.Fatalf("ServiceInstanceID = %q, want the hostname %q", got, host)
+	}
+
+	t.Setenv("SERVICE_INSTANCE_ID", "task-7f3a")
+	if got := Load().ServiceInstanceID; got != "task-7f3a" {
+		t.Fatalf("ServiceInstanceID = %q, want task-7f3a", got)
 	}
 }

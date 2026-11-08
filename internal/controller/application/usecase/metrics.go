@@ -37,11 +37,14 @@ type metrics struct {
 	attrs map[string]metric.MeasurementOption
 }
 
+var tickBuckets = []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5}
+
 func newMetrics() metrics {
 	m := otel.Meter("github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/controller")
 	// The API returns a usable no-op instrument alongside any error.
-	duration, _ := m.Float64Histogram("tick_duration_seconds", metric.WithUnit("s"))
-	lag, _ := m.Float64Histogram("tick_lag_seconds", metric.WithUnit("s"))
+	buckets := metric.WithExplicitBucketBoundaries(tickBuckets...)
+	duration, _ := m.Float64Histogram("tick_duration_seconds", metric.WithUnit("s"), buckets)
+	lag, _ := m.Float64Histogram("tick_lag_seconds", metric.WithUnit("s"), buckets)
 	skipped, _ := m.Int64Counter("ticks_skipped_total")
 	leaderChanges, _ := m.Int64Counter("leader_changes_total")
 	purged, _ := m.Int64Counter("purged_total")

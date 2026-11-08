@@ -77,6 +77,7 @@ func Load() *Config {
 		LogFormat:           getEnv("LOG_FORMAT", "text"),
 		OtelExporterType:    getEnv("OTEL_EXPORTER_TYPE", "stdout"),
 		OtelEndpoint:        getEnv("OTEL_ENDPOINT", "localhost:4318"),
+		ServiceInstanceID:   getEnv("SERVICE_INSTANCE_ID", hostname()),
 		OtelMetricsExporter: os.Getenv("OTEL_METRICS_EXPORTER"),
 		OtelTracesExporter:  os.Getenv("OTEL_TRACES_EXPORTER"),
 		OtelLogsExporter:    getEnv("OTEL_LOGS_EXPORTER", "none"),
@@ -138,4 +139,9 @@ func getBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+func hostname() string {
+	h, _ := os.Hostname()
+	return h
 }
