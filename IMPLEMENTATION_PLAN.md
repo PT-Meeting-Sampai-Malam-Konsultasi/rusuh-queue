@@ -25,15 +25,16 @@ Server-Sent Events. Everything after admission belongs to `core` (Node.js).
 ## How `queue` talks to `core`
 
 There are two backend codebases. At runtime there are four deployments: `queue`, `core-api` and `core-worker` (one
-Node.js image in two roles), and `dukcapil-mock`. `queue` and `core` **never call each other over HTTP**; they share
-one Valkey cluster and one PostgreSQL instance, each with its own keys and schema.
+Node.js image in two roles), and `dukcapil-mock`. They share one Valkey cluster and one PostgreSQL instance, each with its own keys and schema. The only HTTP call
+between them is `registerAdmission` (`queue` → `core`, ADR-0020, link 5).
 
 | # | Link | Direction | How | When |
 | --- | --- | --- | --- | --- |
-| 1 | Tokens | both | Each signs its own EdDSA tokens and serves `/.well-known/jwks.json`; the other verifies locally with cached keys | Every request with a token |
+| 1 | Tokens | both | Each signs its own EdDSA tokens and serves `/.well-known/jwks.json`; the other verifies locally with cached keys (admission tokens: matched against link 5 since ADR-0020) | Every request with a token |
 | 2 | Booking events | `core-worker` → `queue` | Outbox → relay → Valkey Stream `stream:booking` → consumer group `queue` (at least once, acked, dead-letter) | `booking.held`, `booking.paid`, `booking.expired` |
 | 3 | Shared state, key + nudge | both | The owner writes a key; sharded pub/sub (`SPUBLISH`) only says "re-read it". Readers also re-read on reconnect and on a timer, so a lost message costs only delay | Stock and sale settings from `core`; queue state from `queue` |
 | 4 | The client | `queue` → app → `core` | The app sends the admission token to `core` as `X-Admission-Token` | Detail, attendee check, hold |
+| 5 | Admission record | `queue` → `core` | `PUT /v1/internal/admissions/{slotId}` (`registerAdmission`, service token, 1 s, one retry) before the token goes to the user; `core` accepts only a token that matches its record. 503 `ADMISSION_UNAVAILABLE` when `core` fails | Every successful claim |
 
 **Rule:** anything that changes a counter by a delta (held, paid, expired) goes on the stream, never on plain pub/sub,
 because pub/sub has no ack or replay. Pub/sub carries only "latest value wins" state that sits in a key.
@@ -95,7 +96,8 @@ Each has a recommendation, so work can start; confirm with Backend 2 (Node.js) b
 | D-8 | Key layout. The docs list `q:{evt}:dev:{device}` per device, but a Lua script must declare every key it touches in cluster mode. | Hashes per event: `q:{evt}:devs` (device → seq), `q:{evt}:accts` (user → device), `q:{evt}:leases` (slot → lease). Same hash tag, declared keys only. Update the Solution Architecture's key table once agreed. |
 | D-9 | How does Home learn that the queue is `closed` (FR-03)? | `core` catalog reads `q:{evt}:frontier` when it rebuilds the Home model, or subscribes to `q:{evt}:tick`. `queue` documents the frontier JSON as a contract. |
 | D-10 | Who attaches the account to a place after login? The journey has `core` auth writing `q:{evt}:acct:{user}`, which breaks key ownership. | The app calls `joinQueue` again with its access token; `queue` attaches the account (idempotent). Fix journey node LG15. |
-| D-12 | How long does an admitted device have to claim its turn? (HiFi 26 Oct: "60 detik untuk masuk") | **60 s** (`MISS_WINDOW`), was 5 min. Clients claim automatically at the turn. The D-7 invitation window follows it; `RATE_WINDOW` (5 min) keeps the history for `ratePerMin`. A missed, used or left place is over: join gives a new number at the back. |
+| D-12 | How long does an admitted device have to claim its turn? (HiFi 26 Oct: "60 detik untuk masuk") | **60 s** (`MISS_WINDOW`), was 5 min; since ADR-0021 only for a device logged in before its turn, the others get `LOGIN_WINDOW` (3 min). Clients claim automatically at the turn. The D-7 invitation window follows it; `RATE_WINDOW` (5 min) keeps the history for `ratePerMin`. A missed, used or left place is over: join gives a new number at the back. |
+| D-13 | Can a logged-in user move their place to another device (log out on A, log in on B, keep `seq`)? (asked 1 Nov, decided 3 Nov) | **Allowed for now, with the risks below accepted.** Since 5 Nov (Backend 2) every logged-in `joinQueue` moves the place without asking, keeping the better place; `{"takeOver": true}` is accepted and ignored. `rusuh_transfer_v1` moves a live, unclaimed place with the same `seq` and turn time. A gets 410 `MOVED`. Since ADR-0021 a claimed turn not yet held moves too (same slot and end). At most `PLACE_TRANSFERS_PER_EVENT` (default 1, 0 = off) moves per account per event. Reverses the device-only rule of QnA 14 Oct; to confirm with the owner. FAQ 9.10. |
 | D-11 | Does the TTL freeze affect `queue`? | Yes, for admitted users without a hold: on `core:incident` = frozen, the controller stops purging and pushes lease ends forward by the frozen time when it lifts. Held leases already wait for `core`'s events. |
 
 ## Repository layout
@@ -127,13 +129,13 @@ rusuh-queue/
 ├── db/migrations/                  # goose; also the schema sqlc reads
 ├── db/queries/<domain>/            # sqlc queries for controller and admin (consumer from M4)
 ├── test/integration/               # HTTP and controller tests on real Valkey and PostgreSQL
-├── .github/workflows/ci.yml        # gofmt, vet, golangci-lint, govulncheck, race tests, sqlc drift, multi-arch image
+├── .github/workflows/ci.yml        # calls rusuh-infra's shared backend-ci.yml / backend-cd.yml (CICD-01)
 ├── Dockerfile                      # distroless, non-root, cross-compiled amd64 + arm64
 ├── docker-compose.yml              # PostgreSQL 16, Valkey 8 (AOF off), app, Prism mock (profile "mock")
-└── Makefile                        # run, test, lint, vuln, gen, migrate-*, deps-up, mock-api, image, ci
+└── Makefile                        # run, test, test-cover, cover, lint, vuln, gen, migrate-*, deps-up, mock-api, image, ci
 ```
 
-Libraries: **Go 1.26** (`toolchain go1.26.10`; Go 1.25.10 had reachable standard-library vulnerabilities), std
+Libraries: **Go 1.27** (`toolchain go1.27.3`, the latest patch with the current standard-library CVE fixes), std
 `net/http` routing (Go 1.22 method patterns), `valkey-go`, `pgx/v5` + `sqlc`, `oapi-codegen` (types),
 `golang-jwt/jwt/v5` (EdDSA, M1), OpenTelemetry 1.47 through `github.com/goleggo/observer` v0.1.4,
 `testcontainers-go`, `pgregory.net/rapid` for property tests. Tools run with `go run …@version`, never as `tool`
@@ -251,8 +253,9 @@ Runs in every task; per live event exactly one leader does the work.
 `HTTP_ADDR`, `ADMIN_ADDR`, `VALKEY_ADDR`, `VALKEY_PASSWORD`, `DATABASE_URL` (role `queue_rw`, `queue` schema
 only), `SIGNING_KEYS` (Ed25519 PEMs with `kid`, current first), `CORE_JWKS_URL`,
 `TURNSTILE_SECRET`, `ATTESTOR=sandbox|real`, `CORS_ORIGINS`, `STREAM_MAX_PER_TASK=5000`, `STREAM_LIFETIME=10m`,
-`HEARTBEAT=15s`, `TICK=1s`, `RECONCILE_EVERY=10s`, `SNAPSHOT_MAX_AGE=30s`, `PURGE_GRACE=30s`, `ORDER_WINDOW=5m`,
-`MISS_WINDOW=60s` (MISSED, D-7 invitations), `RATE_WINDOW=5m` (`ratePerMin`, history kept), `RATE_PRIOR_ORDER_TIME=6m` (warm-up speed guess, 0 = off), `RL_JOIN_PER_DEVICE=30`, `RL_CLAIM_PER_DEVICE=60`, `TRUSTED_PROXY_CIDRS`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`STREAM_HEARTBEAT=15s`, `STREAM_DRAIN=25s` (below `SHUTDOWN_TIMEOUT`), `RL_STREAM_PER_DEVICE=12`, `TICK=1s`, `RECONCILE_EVERY=10s`, `SNAPSHOT_MAX_AGE=30s`, `PURGE_GRACE=30s`, `ORDER_WINDOW=5m`,
+`MISS_WINDOW=60s` (MISSED for a device logged in before its turn), `LOGIN_WINDOW=3m` (every other device; D-7 invitations use the longer of the two; ADR-0021), `CLAIM_REQUIRES_LOGIN=true`,
+`CORE_INTERNAL_URL`, `CORE_INTERNAL_TOKEN`, `CORE_ADMISSION_TIMEOUT=1s` (registerAdmission, ADR-0020), `RATE_WINDOW=5m` (`ratePerMin`, history kept), `RATE_PRIOR_ORDER_TIME=6m` (warm-up speed guess, 0 = off), `RL_JOIN_PER_DEVICE=30`, `RL_CLAIM_PER_DEVICE=60`, `TRUSTED_PROXY_CIDRS`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
 `GOMEMLIMIT`.
 
 ### Metrics and alerts (NFR-09)
@@ -414,9 +417,19 @@ reasons in the 14 advance-rule cases) and HTTP tests (MISSED on me, rejoin seq, 
 
 ### M4 — Consumer, release, reconcile (Thu 5 – Fri 6 Nov)
 
-- [ ] Consumer group, `rusuh_release_v1`, `XAUTOCLAIM`, dead-letter.
-- [ ] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard; TTL freeze handling (D-11).
-- [ ] `cmd/fakecore` for tests until `core` is ready: publishes `stream:booking` events, writes `core:{evt}:stock` / `sale` and nudges. Then the joint test with Backend 2.
+- [x] Consumer group, `rusuh_release_v1`, retry of idle entries (`XPENDING` + `XCLAIM`, which also gives the delivery
+      count), dead-letter (1 Nov).
+- [x] `rusuh_reconcile_v1` on nudge and every 10 s from `core:{evt}:stock`; stale-snapshot guard (1 Nov).
+- [ ] TTL freeze handling (D-11): deferred until `core` builds `adminTtlFreeze`.
+- [x] `cmd/fakecore` (3 Nov), kept local and gitignored so it is never committed. Subcommands `setup`, `run` (books,
+      pays and expires for admitted users), `stock` (inject drift), `event` (`-dup` for redelivery), `poison`,
+      `cancel`, `remove`. Checked end to end against a running `queue`:
+      - 14 events delivered 3 times each were applied once;
+      - `unreserved` equalled `core`'s available stock;
+      - a poison event was dead-lettered;
+      - a drift of −3 was corrected on the second reconcile.
+- [ ] Joint test with Backend 2 (replaces `fakecore`).
+- [x] Property test `TestStockBooksProperty` (`rapid`, 3 Nov), described under Verify below.
 
 **Verify:** the same event delivered 5 times changes state once; `held` after a purge gives the right `unreserved`;
 a poison event lands in the DLQ after 5 tries and alerts; reconcile corrects an injected drift on the second run after a nudge; a snapshot older than 30 s stops reconcile and alerts; dropping the pub/sub connection loses no correction (keys re-read).
@@ -425,13 +438,24 @@ and `unreserved + resv == PostgreSQL available` once no event is in flight (rese
 
 ### M5 — Stream, admin, lottery (Mon 9 – Tue 10 Nov)
 
-- [ ] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain).
-- [ ] `adminUpdateQueue` on the private listener, audit log.
-- [ ] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` after the draw.
+- [x] SSE hub and handler (limits, heartbeat, lifetime with jitter, slow client drop, drain), 6 Nov: `internal/stream`.
+  Unit tests (hub, handler) and the integration test `TestStreamDeliversFrontiersAndTheTurn` (real Valkey, controller
+  ticking) pass; the latter is mutation-checked (no subscription → no turn).
+- [x] `adminUpdateQueue` on the private listener (`ADMIN_PORT`), audit columns in `event_queue_config` (1 Nov).
+- [x] `rusuh_lottery_v1` and the opening sequence; `getMyPlace` and `claimTurn` after the draw (1 Nov).
 
 **Verify:** through Cloudflare on the lab, events arrive one per second unbuffered and a stream survives 125 s on
 heartbeats; `turn` arrives within 1 s of `served` passing `seq`; a pod killed mid-stream → clients reconnect or poll
 with no lost place; `streamFrom = 0` → every connect gets 409; 1,000 pre-open devices get a random but complete order.
+
+### CICD-01-Q1 — Shared pipeline and coverage gate (done 7 Nov, PR #24)
+
+- [x] `ci.yml` calls `rusuh-infra`'s `backend-ci.yml` / `backend-cd.yml`; sqlc drift as `extra`, gosec as `sast`.
+- [x] gosec G115 fixed (range checks before int32); G404 excluded with the reason (jitter only).
+- [x] `make test-cover` + `make cover`: 90% gate over hand-written code; 39.6% → 94.8%.
+- [x] `CI_VULN=off` repo override checked; `ci / checks` and `ci / image` required on `main`.
+- [x] Move both `uses:` refs from `@feature/shared-ci-cd` to `@v1` (rusuh-infra#5 merged and tagged; the branch is deleted).
+- [ ] Merge PR #24.
 
 ### M6 — Hardening, load, handover (Wed 11 – Thu 12 Nov)
 
@@ -468,7 +492,7 @@ a drill; runbooks reviewed by Backend 2.
 
 | Level | Tool | Covers |
 | --- | --- | --- |
-| Unit | `go test`, table tests | advance rule, ETA, token claims, config |
+| Unit | `go test`, table tests, gomock | usecases, handlers, config, wiring; 90% gate (`make cover`) |
 | Lua | Testcontainers Valkey 8, `rapid` | every function, races, idempotency, invariants |
 | Integration | Testcontainers Valkey + PostgreSQL | controller + checkpoint + reconcile, consumer + DLQ |
 | Contract | `kin-openapi` response validation against `openapi.yaml` | every operation's status codes and bodies |
@@ -486,6 +510,8 @@ a drill; runbooks reviewed by Backend 2.
 | Lua bugs oversell or lose units | Every function behind race and property tests; reconcile as the backstop; PostgreSQL `CHECK` as the last guard |
 | Hot key on one event at 15,000 joins/s | One shard per busy event; measure Valkey ops/s in the spike test |
 | SSE behaves differently through CloudFront | Proven on Cloudflare in the lab; re-test in AWS staging; `streamFrom = 0` |
+| Moving a place to another device (D-13) is abused: a place is resold by logging in on the buyer's device, or a stolen access token moves someone's place | Accepted for now. Limits: one move per account per event (`PLACE_TRANSFERS_PER_EVENT`); the OTP goes to the owner's email; bookings are tied to the account; attendee NIK is checked at the gate; access tokens last 15 min; every move is logged ("place moved to another device"). If abuse shows: set `PLACE_TRANSFERS_PER_EVENT=0` (no deploy), or require a recent `auth_time` on `takeOver` |
+| A late `booking.held` for a lease the purge already ended. Found by `rapid` on 3 Nov: stock 1; A's lease ends and is purged; B claims the unit; `core` then holds A's unit. B is admitted with a reserved unit that no longer exists. There is no oversell, because PostgreSQL's `CHECK` refuses B's hold, but it breaks NFR-02 "admitted user always finds stock" | It happens only if `core` accepts a hold after the lease ends, or if its event arrives after `PURGE_GRACE` (30 s). Today `tokens.md` lets `core` accept `exp` with 30 s leeway, the same as the grace, so the boundary is open. Ask Backend 2: on `createBooking`, check `exp` with at most 5 s leeway. Alert on relay lag over 20 s. Reconcile corrects `unreserved` afterwards. The property test covers the case where no hold arrives after the purge |
 | H1 feedback repeats (security, transactions, alerting, runbooks) | Security tests, idempotent scripts, alerts and runbooks are tasks in M1, M4 and M6, not extras |
 
 ## Doc follow-ups (in `rusuh-documentation`, uncommitted)
@@ -497,5 +523,5 @@ a drill; runbooks reviewed by Backend 2.
 - ADR-0016 (proposed): key + nudge over sharded pub/sub between services (D-1, D-2, D-9, D-11); amends ADR-0013.
 - Solution Architecture: a "How `core` and `queue` interact" section (the four links above); live doc and PDF too.
 - Customer journey LG15: account attach by re-join, not by `core` writing `q:*` (D-10).
-- Solution Architecture technology table: queue service is Go 1.26 + std `net/http` (not `chi`), scaffolded with justgo.
+- Solution Architecture technology table: queue service is Go 1.27 + std `net/http` (not `chi`), scaffolded with justgo.
 - Fixed 24 Oct: `Frontier.ts` description in `openapi.yaml` was unquoted and parsed as an extra key.

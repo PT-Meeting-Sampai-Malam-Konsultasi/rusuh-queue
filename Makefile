@@ -1,4 +1,4 @@
-.PHONY: run build test clean docker-up docker-down mock sqlc lint vuln fmt-check gen-api gen deps-up migrate-up migrate-down migrate-status mock-api image ci
+.PHONY: run build test test-cover cover clean docker-up docker-down mock sqlc lint vuln fmt-check gen-api gen deps-up migrate-up migrate-down migrate-status mock-api image ci
 
 # Tools run with `go run …@version` so their dependencies never mix with the service's go.mod
 GOOSE        := go run github.com/pressly/goose/v3/cmd/goose@v3.29.0
@@ -6,6 +6,8 @@ OAPI_CODEGEN := go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 OPENAPI_SPEC ?= ../rusuh-documentation/api/openapi.yaml
 DATABASE_URL ?= postgres://postgres:postgres@localhost:5432/rusuh?sslmode=disable
 IMAGE        ?= ghcr.io/pt-meeting-sampai-malam-konsultasi/rusuh-queue
+COVER_MIN    ?= 90
+COVER_SKIP   := /rusuh-queue/(api|cmd|_mock|internal/testkit)/|/sqlcgen/
 TAG          ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
 run:
@@ -20,7 +22,15 @@ test:
 
 unit-test-coverage:
 	go test -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out
+	go tool cover -func=coverage.out
+
+# Gate on coverage.out from `make test-cover`, leaving out generated code, entry points and test helpers
+cover:
+	@grep -vE '$(COVER_SKIP)' coverage.out > coverage.src.out
+	@go tool cover -func=coverage.src.out | awk -v min=$(COVER_MIN) '/^total:/ { sub(/%/, "", $$3); printf "total %.1f%% (minimum %d%%)\n", $$3, min; exit ($$3 < min) }'
+
+test-cover:
+	go test -race -p 2 -coverprofile=coverage.out ./...
 
 clean:
 	rm -rf bin/
@@ -38,7 +48,7 @@ mock:
 	go generate ./internal/...
 
 sqlc:
-	sqlc generate
+	go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
 
 gen-api:
 	$(OAPI_CODEGEN) -config api/oapi-codegen.yaml $(OPENAPI_SPEC)
@@ -46,7 +56,7 @@ gen-api:
 gen: gen-api sqlc mock
 
 lint:
-	golangci-lint run ./...
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
 
 vuln:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -69,4 +79,4 @@ mock-api:
 image:
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE):$(TAG) .
 
-ci: fmt-check lint vuln test build
+ci: fmt-check lint vuln test-cover cover build

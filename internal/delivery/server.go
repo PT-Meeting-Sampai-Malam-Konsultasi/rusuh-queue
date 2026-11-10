@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/goleggo/observer/middleware/nethttp"
 	vk "github.com/valkey-io/valkey-go"
 
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/config"
+	streaminbound "github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/stream/port/inbound"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/clientip"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/database"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/pkg/health"
@@ -24,11 +26,24 @@ import (
 // clients to close on shutdown.
 type Server struct {
 	Handler http.Handler
-	Health  *health.Handler
+	// AdminHandler serves the operator API; it must only listen on a private network.
+	AdminHandler http.Handler
+	Health       *health.Handler
 
 	db         *sql.DB
 	valkey     vk.Client
+	stream     streaminbound.IStreamUsecase
 	background []func(ctx context.Context) error
+}
+
+// Drain starts the shutdown: readiness fails so the load balancer stops sending
+// requests, and open streams end spread over STREAM_DRAIN, so http.Server.Shutdown
+// can finish (it waits for every open stream).
+func (s *Server) Drain() {
+	s.Health.Drain()
+	if s.stream != nil {
+		s.stream.Drain()
+	}
 }
 
 // New connects PostgreSQL and Valkey, checks the settings that must be right
@@ -38,7 +53,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
-	valkey, err := valkeyx.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyPassword)
+	valkey, err := valkeyx.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyPassword, cfg.ValkeyTLSEnabled)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("connect valkey: %w", err)
@@ -64,10 +79,16 @@ func (s *Server) wire(cfg *config.Config) error {
 	})
 	s.Health.RegisterRoutes(mux)
 
-	if err := s.wireDomains(cfg, mux, ipResolver); err != nil {
+	adminMux := http.NewServeMux()
+	if err := s.wireDomains(cfg, mux, adminMux, ipResolver); err != nil {
 		return err
 	}
-	s.Handler = httpmw.CORS(cfg.CORSOrigins, mux)
+	var obsOpts []nethttp.Option
+	if !cfg.RequestLog {
+		obsOpts = append(obsOpts, nethttp.WithoutRequestLog())
+	}
+	s.Handler = nethttp.Handler(httpmw.CORS(cfg.CORSOrigins, mux), append(obsOpts, nethttp.WithSkip("/healthz", "/readyz"))...)
+	s.AdminHandler = nethttp.Handler(adminMux, obsOpts...)
 	return nil
 }
 

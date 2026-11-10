@@ -35,8 +35,15 @@ short version for this repo.
   until every task runs the new one, unless the change stays compatible both ways (optional trailing ARGV, extra
   output fields). Time comes from `now_ms()` (Valkey `TIME`), never from an argument; durations are arguments from
   config. A key a script creates gets the event's expiry with `ensure_expiry`. Controller writes are fenced.
+- **Style:** `../rusuh-documentation/ai-guideline/go-coding-style.md`: comments only for the why, return values
+  instead of pointers, no allocations on hot paths without need, Effective Go.
 - **Commits:** `[<issue-code>] | david | <message>`, e.g. `[FR-09-Q1] | david | add the wait range to the frontier`.
 
 ## Before you finish
 
-`make ci` (gofmt, golangci-lint, govulncheck, race tests, build), and `gofmt -w` on every Go file you changed.
+`make ci` (gofmt, golangci-lint, govulncheck, race tests with coverage, the 90% coverage gate, build), and `gofmt -w`
+on every Go file you changed. New code comes with its tests: `make cover` fails below `COVER_MIN` (90%), counted over
+hand-written code only (`api/`, `cmd/`, `_mock/`, `internal/testkit/` and `sqlcgen/` are left out).
+
+**CI** is the shared pipeline: `.github/workflows/ci.yml` calls `rusuh-infra`'s `backend-ci.yml` / `backend-cd.yml`
+(switches and inputs in `rusuh-infra/ci-cd/README.md`). `ci / checks` and `ci / image` are required on `main`.

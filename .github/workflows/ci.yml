@@ -4,56 +4,63 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: gofmt
-        run: make fmt-check
-      - name: vet
-        run: go vet ./...
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.12.2  # built with Go 1.26; v2.4.0 (Go 1.25) cannot lint a go 1.26 module
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-      - name: test
-        run: go test -race ./...
-      - name: sqlc drift
-        if: hashFiles('sqlc.yaml') != ''
-        run: |
-          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0 generate
-          git diff --exit-code -- internal/
-
-  image:
-    needs: test
-    runs-on: ubuntu-latest
+  ci:
+    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-ci.yml@v1
     permissions:
       contents: read
       packages: write
+    with:
+      service: rusuh-queue
+      runtime: go
+      runtime-version-file: go.mod
+      format: make fmt-check
+      lint: |
+        go vet ./...
+        make lint
+      vuln: make vuln
+      test: make test-cover
+      # G404: math/rand only jitters retry hints and stream lifetimes; nothing secret is drawn from it
+      sast: go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -quiet -severity high -exclude-dir=_mock -exclude=G404 ./...
+      coverage: make cover
+      extra: |
+        make sqlc
+        git diff --exit-code -- internal/
+
+  sonar:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        if: github.event_name == 'push'
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
         with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/pt-meeting-sampai-malam-konsultasi/rusuh-queue:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          go-version-file: go.mod
+      - name: coverage
+        if: env.SONAR_TOKEN != ''
+        run: go test -p 2 -coverprofile=coverage.out ./...
+      - name: SonarQube Cloud scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8
+      - if: env.SONAR_TOKEN == ''
+        run: echo "SonarQube Cloud scan skipped; SONAR_TOKEN is not set" >> "$GITHUB_STEP_SUMMARY"
+
+  cd:
+    needs: ci
+    if: github.ref_type == 'tag'
+    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-cd.yml@v1
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    with:
+      service: rusuh-queue
+      environment: production

@@ -9,11 +9,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+      - "127.0.0.1:8081:8081"
     environment:
       - PORT=8080
       - ENV=development
       - DATABASE_URL=postgres://postgres:postgres@db:5432/rusuh?sslmode=disable
       - VALKEY_ADDR=valkey:6379
+      - VALKEY_TLS_ENABLED=false
       - LOG_FORMAT=json
       - TURNSTILE_SECRET=1x0000000000000000000000000000000AA
       - CORS_ORIGINS=http://localhost:3000

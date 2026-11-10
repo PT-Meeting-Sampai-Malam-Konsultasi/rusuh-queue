@@ -3,6 +3,8 @@ package httpmw
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -46,5 +48,22 @@ func TestCORS(t *testing.T) {
 				t.Fatal("foreign preflight must not get allowed headers")
 			}
 		})
+	}
+}
+
+// Every method the public API serves must pass the browser's preflight;
+// leaveQueue is DELETE /v1/queue/{eventId}/me.
+func TestCORSPreflightAllowsEveryAPIMethod(t *testing.T) {
+	h := CORS([]string{"https://rusuh-app.bingbing.my.id"}, http.NotFoundHandler())
+	for _, m := range []string{"GET", "POST", "DELETE"} {
+		req := httptest.NewRequest("OPTIONS", "/v1/queue/evt/me", nil)
+		req.Header.Set("Origin", "https://rusuh-app.bingbing.my.id")
+		req.Header.Set("Access-Control-Request-Method", m)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		allowed := strings.Split(rec.Header().Get("Access-Control-Allow-Methods"), ", ")
+		if !slices.Contains(allowed, m) {
+			t.Errorf("preflight for %s: Allow-Methods = %v", m, allowed)
+		}
 	}
 }

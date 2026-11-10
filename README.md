@@ -49,6 +49,13 @@ make migrate-up     # goose migrations for the queue schema
 make run            # http://localhost:8080/healthz, /readyz
 ```
 
+### Valkey configuration
+
+Local Docker Valkey uses `VALKEY_TLS_ENABLED=false` and an empty `VALKEY_PASSWORD`.
+For ECS with AWS ElastiCache, set `VALKEY_TLS_ENABLED=true` and inject
+`VALKEY_PASSWORD` from AWS Secrets Manager. TLS requires version 1.2 or newer and
+uses normal certificate verification; the service does not bypass certificate checks.
+
 Web and mobile can build against the contract with the mock (it serves the spec's response examples):
 
 ```bash
@@ -62,7 +69,8 @@ make mock-api       # Prism on http://localhost:4010 (spec paths, no /v1 prefix)
 | Regenerate API types, sqlc, mocks | `make gen` (or `gen-api`, `sqlc`, `mock`) |
 | New table | add `db/migrations/0000N_<name>.sql` (goose), queries in `db/queries/<domain>/`, point `sqlc.yaml` at them, `make sqlc` |
 | Everything CI runs | `make ci` |
+| Coverage (gate: 90%) | `make test-cover` then `make cover` |
 | Images | `make image` (buildx, amd64 + arm64) |
 
-Requires Go 1.26 (the `toolchain` line downloads it), Docker (integration tests start Valkey and PostgreSQL
+Requires Go 1.27 (the `toolchain` line downloads go1.27.3), Docker (integration tests start Valkey and PostgreSQL
 containers), `sqlc`, `golangci-lint` and `mockgen`.

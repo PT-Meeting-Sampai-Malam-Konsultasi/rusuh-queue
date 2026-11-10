@@ -77,6 +77,7 @@ const (
 	ErrorCodeACCOUNTHASACTIVEBOOKING  ErrorCode = "ACCOUNT_HAS_ACTIVE_BOOKING"
 	ErrorCodeACCOUNTHASPLACEELSEWHERE ErrorCode = "ACCOUNT_HAS_PLACE_ELSEWHERE"
 	ErrorCodeADMISSIONINVALID         ErrorCode = "ADMISSION_INVALID"
+	ErrorCodeADMISSIONUNAVAILABLE     ErrorCode = "ADMISSION_UNAVAILABLE"
 	ErrorCodeATTENDEENOTVALIDATED     ErrorCode = "ATTENDEE_NOT_VALIDATED"
 	ErrorCodeBOOKINGNOTHELD           ErrorCode = "BOOKING_NOT_HELD"
 	ErrorCodeBOOKINGNOTPAID           ErrorCode = "BOOKING_NOT_PAID"
@@ -89,7 +90,9 @@ const (
 	ErrorCodeEXPIRED                  ErrorCode = "EXPIRED"
 	ErrorCodeFULL                     ErrorCode = "FULL"
 	ErrorCodeINTERNALERROR            ErrorCode = "INTERNAL_ERROR"
+	ErrorCodeLOGINREQUIRED            ErrorCode = "LOGIN_REQUIRED"
 	ErrorCodeMISSED                   ErrorCode = "MISSED"
+	ErrorCodeMOVED                    ErrorCode = "MOVED"
 	ErrorCodeNIKINVALID               ErrorCode = "NIK_INVALID"
 	ErrorCodeNIKSEATTAKEN             ErrorCode = "NIK_SEAT_TAKEN"
 	ErrorCodeNOSTOCK                  ErrorCode = "NO_STOCK"
@@ -117,6 +120,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeADMISSIONINVALID:
 		return true
+	case ErrorCodeADMISSIONUNAVAILABLE:
+		return true
 	case ErrorCodeATTENDEENOTVALIDATED:
 		return true
 	case ErrorCodeBOOKINGNOTHELD:
@@ -141,7 +146,11 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeINTERNALERROR:
 		return true
+	case ErrorCodeLOGINREQUIRED:
+		return true
 	case ErrorCodeMISSED:
+		return true
+	case ErrorCodeMOVED:
 		return true
 	case ErrorCodeNIKINVALID:
 		return true
@@ -625,6 +634,23 @@ type Admission struct {
 	SlotId        string    `json:"slotId"`
 }
 
+// AdmissionRecord defines model for AdmissionRecord.
+type AdmissionRecord struct {
+	DeviceId string `json:"deviceId"`
+	EventId  string `json:"eventId"`
+
+	// ExpiresAt Lease end (queue's clock)
+	ExpiresAt     time.Time `json:"expiresAt"`
+	ReservedUnits int       `json:"reservedUnits"`
+	Seq           int64     `json:"seq"`
+
+	// Token The admission+jwt exactly as given to the user
+	Token string `json:"token"`
+
+	// UserId The account that claimed (ADR-0021); empty only while CLAIM_REQUIRES_LOGIN is off
+	UserId *string `json:"userId,omitempty"`
+}
+
 // Attendee defines model for Attendee.
 type Attendee struct {
 	CategoryId   string `json:"categoryId"`
@@ -914,8 +940,11 @@ type Problem struct {
 // QueuePlace defines model for QueuePlace.
 type QueuePlace struct {
 	// AccountAttached True once a logged-in account owns this place
-	AccountAttached *bool  `json:"accountAttached,omitempty"`
-	EventId         string `json:"eventId"`
+	AccountAttached *bool `json:"accountAttached,omitempty"`
+
+	// Claimed True when the account's claimed turn moved to this device (ADR-0021): call claimTurn at once to get the same slot and the time left
+	Claimed *bool  `json:"claimed,omitempty"`
+	EventId string `json:"eventId"`
 
 	// OpensAt When numbers are handed out (sale opening); the pre-queue countdown
 	OpensAt    *time.Time `json:"opensAt,omitempty"`
@@ -943,7 +972,7 @@ type QueueTurn struct {
 	Served    int       `json:"served"`
 	ServerNow time.Time `json:"serverNow"`
 
-	// TurnExpiresAt Claim before this or the turn is MISSED (60 s)
+	// TurnExpiresAt Claim before this or the turn is MISSED: 60 s for a device logged in before its turn, LOGIN_WINDOW (3 min) otherwise (ADR-0021)
 	TurnExpiresAt time.Time `json:"turnExpiresAt"`
 }
 
@@ -1213,6 +1242,13 @@ type StartSnapPaymentParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// JoinQueueJSONBody defines parameters for JoinQueue.
+type JoinQueueJSONBody struct {
+	// TakeOver Accepted for older apps and ignored. Since 5 Nov every logged-in join moves the account's place here (D-13).
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	TakeOver *bool `json:"takeOver,omitempty"`
+}
+
 // JoinQueueParams defines parameters for JoinQueue.
 type JoinQueueParams struct {
 	// XTurnstileToken Required for web callers without a queue token.
@@ -1249,6 +1285,9 @@ type RegisterDeviceJSONRequestBody RegisterDeviceJSONBody
 // ValidateAttendeeJSONRequestBody defines body for ValidateAttendee for application/json ContentType.
 type ValidateAttendeeJSONRequestBody ValidateAttendeeJSONBody
 
+// RegisterAdmissionJSONRequestBody defines body for RegisterAdmission for application/json ContentType.
+type RegisterAdmissionJSONRequestBody = AdmissionRecord
+
 // StartEmailChangeJSONRequestBody defines body for StartEmailChange for application/json ContentType.
 type StartEmailChangeJSONRequestBody StartEmailChangeJSONBody
 
@@ -1263,6 +1302,9 @@ type ExchangeHandoffCodeJSONRequestBody ExchangeHandoffCodeJSONBody
 
 // StartSnapPaymentJSONRequestBody defines body for StartSnapPayment for application/json ContentType.
 type StartSnapPaymentJSONRequestBody StartSnapPaymentJSONBody
+
+// JoinQueueJSONRequestBody defines body for JoinQueue for application/json ContentType.
+type JoinQueueJSONRequestBody JoinQueueJSONBody
 
 // MidtransNotificationJSONRequestBody defines body for MidtransNotification for application/json ContentType.
 type MidtransNotificationJSONRequestBody = MidtransNotification

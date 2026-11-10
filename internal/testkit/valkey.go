@@ -44,7 +44,7 @@ func Valkey(t *testing.T) valkey.Client {
 			// Log only: wait.ForListeningPort's host-side check times out on WSL Docker.
 			WaitingFor: wait.ForLog("Ready to accept connections").WithStartupTimeout(60 * time.Second),
 		}, "6379/tcp", func(addr string) error {
-			c, err := valkeyx.Connect(ctx, addr, "")
+			c, err := valkeyx.Connect(ctx, addr, "", false)
 			if err == nil {
 				c.Close()
 			}
@@ -55,7 +55,7 @@ func Valkey(t *testing.T) valkey.Client {
 		t.Fatalf("start valkey: %v", valkeyErr)
 	}
 
-	client, err := valkeyx.Connect(ctx, valkeyAddr, "")
+	client, err := valkeyx.Connect(ctx, valkeyAddr, "", false)
 	if err != nil {
 		t.Fatalf("connect valkey: %v", err)
 	}
@@ -99,4 +99,11 @@ func startReachable(ctx context.Context, req testcontainers.ContainerRequest, po
 		_ = c.Terminate(ctx)
 	}
 	return "", lastErr
+}
+
+// ValkeyAddr is the shared Valkey's host:port, flushed like Valkey.
+func ValkeyAddr(t *testing.T) string {
+	t.Helper()
+	Valkey(t)
+	return valkeyAddr
 }
