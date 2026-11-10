@@ -4,6 +4,7 @@ package valkeyx
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -13,14 +14,8 @@ import (
 )
 
 // Connect opens a client, checks it with PING and loads the function library.
-func Connect(ctx context.Context, addr, password string) (valkey.Client, error) {
-	client, err := valkey.NewClient(valkey.ClientOption{
-		InitAddress: []string{addr},
-		Password:    password,
-		// Queue scripts must not wait on a slow Valkey (Solution Architecture: 50 ms budget);
-		// per-call deadlines come from the request context.
-		ConnWriteTimeout: 2 * time.Second,
-	})
+func Connect(ctx context.Context, addr, password string, tlsEnabled bool) (valkey.Client, error) {
+	client, err := valkey.NewClient(clientOption(addr, password, tlsEnabled))
 	if err != nil {
 		return nil, fmt.Errorf("valkey connect %s: %w", addr, err)
 	}
@@ -33,6 +28,22 @@ func Connect(ctx context.Context, addr, password string) (valkey.Client, error) 
 		return nil, err
 	}
 	return client, nil
+}
+
+// clientOption builds a Valkey client option with TLS certificate verification
+// enabled when requested.
+func clientOption(addr, password string, tlsEnabled bool) valkey.ClientOption {
+	option := valkey.ClientOption{
+		InitAddress: []string{addr},
+		Password:    password,
+		// Queue scripts must not wait on a slow Valkey (Solution Architecture: 50 ms budget);
+		// per-call deadlines come from the request context.
+		ConnWriteTimeout: 2 * time.Second,
+	}
+	if tlsEnabled {
+		option.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	return option
 }
 
 // Ping returns an error when Valkey does not answer PING.

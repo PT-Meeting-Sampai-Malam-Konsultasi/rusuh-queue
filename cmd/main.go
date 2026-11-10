@@ -18,7 +18,11 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
+	}
 
 	ctx := context.Background()
 	shutdownObs, err := observer.Setup(ctx, obsconfig.Config{

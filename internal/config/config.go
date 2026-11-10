@@ -14,8 +14,9 @@ type Config struct {
 
 	DatabaseURL string
 
-	ValkeyAddr     string
-	ValkeyPassword string
+	ValkeyAddr       string
+	ValkeyPassword   string
+	ValkeyTLSEnabled bool
 
 	// SigningKeys: "kid=base64(32-byte Ed25519 seed)", comma-separated, signing key first.
 	// Empty is allowed only with ENV=development (an ephemeral key is generated).

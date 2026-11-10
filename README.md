@@ -49,6 +49,13 @@ make migrate-up     # goose migrations for the queue schema
 make run            # http://localhost:8080/healthz, /readyz
 ```
 
+### Valkey configuration
+
+Local Docker Valkey uses `VALKEY_TLS_ENABLED=false` and an empty `VALKEY_PASSWORD`.
+For ECS with AWS ElastiCache, set `VALKEY_TLS_ENABLED=true` and inject
+`VALKEY_PASSWORD` from AWS Secrets Manager. TLS requires version 1.2 or newer and
+uses normal certificate verification; the service does not bypass certificate checks.
+
 Web and mobile can build against the contract with the mock (it serves the spec's response examples):
 
 ```bash

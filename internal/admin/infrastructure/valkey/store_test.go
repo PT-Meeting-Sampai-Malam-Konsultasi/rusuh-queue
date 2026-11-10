@@ -35,7 +35,7 @@ func TestLiveAndApply(t *testing.T) {
 		t.Fatalf("frontier = %s, %v", f, err)
 	}
 
-	closed, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "")
+	closed, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
