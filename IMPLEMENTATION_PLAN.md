@@ -454,7 +454,8 @@ with no lost place; `streamFrom = 0` → every connect gets 409; 1,000 pre-open 
 - [x] gosec G115 fixed (range checks before int32); G404 excluded with the reason (jitter only).
 - [x] `make test-cover` + `make cover`: 90% gate over hand-written code; 39.6% → 94.8%.
 - [x] `CI_VULN=off` repo override checked; `ci / checks` and `ci / image` required on `main`.
-- [ ] Merge PR #24; move both `uses:` refs from `@feature/shared-ci-cd` to `@v1` once `rusuh-infra#5` is tagged.
+- [x] Move both `uses:` refs from `@feature/shared-ci-cd` to `@v1` (rusuh-infra#5 merged and tagged; the branch is deleted).
+- [ ] Merge PR #24.
 
 ### M6 — Hardening, load, handover (Wed 11 – Thu 12 Nov)
 

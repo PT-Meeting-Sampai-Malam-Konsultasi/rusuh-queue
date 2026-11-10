@@ -11,8 +11,7 @@ permissions:
 
 jobs:
   ci:
-    # TODO(CICD-01): move to @v1 once rusuh-infra#5 is merged and tagged
-    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-ci.yml@feature/shared-ci-cd
+    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-ci.yml@v1
     permissions:
       contents: read
       packages: write
@@ -57,7 +56,7 @@ jobs:
   cd:
     needs: ci
     if: github.ref_type == 'tag'
-    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-cd.yml@feature/shared-ci-cd
+    uses: PT-Meeting-Sampai-Malam-Konsultasi/rusuh-infra/.github/workflows/backend-cd.yml@v1
     permissions:
       contents: read
       packages: read
