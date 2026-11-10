@@ -11,7 +11,7 @@ import (
 
 func TestConnectLoadsTheLibrary(t *testing.T) {
 	ctx := context.Background()
-	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "")
+	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,11 +26,11 @@ func TestConnectLoadsTheLibrary(t *testing.T) {
 
 func TestConnectRefusesBadServers(t *testing.T) {
 	ctx := context.Background()
-	if _, err := valkeyx.Connect(ctx, "127.0.0.1:1", ""); err == nil {
+	if _, err := valkeyx.Connect(ctx, "127.0.0.1:1", "", false); err == nil {
 		t.Fatal("unreachable address accepted")
 	}
 
-	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "")
+	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestConnectRefusesBadServers(t *testing.T) {
 func TestSubscribeResubscribesAfterADisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "")
+	client, err := valkeyx.Connect(ctx, testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

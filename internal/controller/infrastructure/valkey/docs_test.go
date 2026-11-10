@@ -102,7 +102,7 @@ func TestSubscribeDeliversNudges(t *testing.T) {
 
 func TestStoreReportsValkeyErrors(t *testing.T) {
 	testkit.Valkey(t)
-	client, err := valkeyx.Connect(context.Background(), testkit.ValkeyAddr(t), "")
+	client, err := valkeyx.Connect(context.Background(), testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ services:
       - ENV=development
       - DATABASE_URL=postgres://postgres:postgres@db:5432/rusuh?sslmode=disable
       - VALKEY_ADDR=valkey:6379
+      - VALKEY_TLS_ENABLED=false
       - LOG_FORMAT=json
       - TURNSTILE_SECRET=1x0000000000000000000000000000000AA
       - CORS_ORIGINS=http://localhost:3000

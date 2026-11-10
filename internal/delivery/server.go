@@ -53,7 +53,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
-	valkey, err := valkeyx.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyPassword)
+	valkey, err := valkeyx.Connect(ctx, cfg.ValkeyAddr, cfg.ValkeyPassword, cfg.ValkeyTLSEnabled)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("connect valkey: %w", err)

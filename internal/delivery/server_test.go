@@ -31,7 +31,11 @@ func signingKeys(t *testing.T) string {
 
 func testConfig(t *testing.T) *config.Config {
 	t.Setenv("ENV", "development")
-	cfg := config.Load()
+	t.Setenv("VALKEY_TLS_ENABLED", "false")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.DatabaseURL = testkit.PostgresDSN(t)
 	cfg.ValkeyAddr = testkit.ValkeyAddr(t)
 	cfg.ValkeyPassword = ""

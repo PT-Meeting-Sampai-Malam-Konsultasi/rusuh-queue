@@ -67,7 +67,7 @@ func TestStreamReadPendingClaimAckAndDeadLetter(t *testing.T) {
 }
 
 func TestStreamStoreReportsValkeyErrors(t *testing.T) {
-	client, err := valkeyx.Connect(context.Background(), testkit.ValkeyAddr(t), "")
+	client, err := valkeyx.Connect(context.Background(), testkit.ValkeyAddr(t), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

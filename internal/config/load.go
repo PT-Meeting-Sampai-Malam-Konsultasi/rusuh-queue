@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -10,10 +11,18 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func Load() *Config {
+// Load reads runtime configuration from the environment and an optional .env file.
+//
+// Returns an error when a security-sensitive configuration value is invalid.
+func Load() (*Config, error) {
 	// Load .env file if it exists, ignore error if it doesn't
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
+	}
+
+	valkeyTLSEnabled, err := getRequiredBool("VALKEY_TLS_ENABLED", false)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
@@ -26,8 +35,9 @@ func Load() *Config {
 
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/rusuh?sslmode=disable"),
 
-		ValkeyAddr:     getEnv("VALKEY_ADDR", "localhost:6379"),
-		ValkeyPassword: os.Getenv("VALKEY_PASSWORD"),
+		ValkeyAddr:       getEnv("VALKEY_ADDR", "localhost:6379"),
+		ValkeyPassword:   os.Getenv("VALKEY_PASSWORD"),
+		ValkeyTLSEnabled: valkeyTLSEnabled,
 
 		SigningKeys: os.Getenv("SIGNING_KEYS"),
 
@@ -82,6 +92,22 @@ func Load() *Config {
 		OtelTracesExporter:  os.Getenv("OTEL_TRACES_EXPORTER"),
 		OtelLogsExporter:    getEnv("OTEL_LOGS_EXPORTER", "none"),
 		RequestLog:          getBool("REQUEST_LOG", true),
+	}, nil
+}
+
+// getRequiredBool parses a boolean environment variable and rejects invalid values.
+func getRequiredBool(key string, fallback bool) (bool, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	switch v {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid %s: %q must be true or false", key, v)
 	}
 }
 
