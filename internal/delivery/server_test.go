@@ -52,7 +52,7 @@ func testConfig(t *testing.T) *config.Config {
 
 func TestNewServesAndStops(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.CoreInternalURL = "http://core.internal/v1"
+	cfg.CoreInternalURL = "http://core.internal"
 	cfg.CoreJWKSURL = testkit.NewIssuer(t).URL()
 	cfg.AdminJWKSURL = testkit.NewIssuer(t).URL()
 	cfg.RequestLog = false
@@ -119,7 +119,7 @@ func TestNewRefusesBadSettings(t *testing.T) {
 			c.Env = "production"
 			c.SigningKeys = signingKeys(t)
 			c.TurnstileSecret = "s"
-			c.CoreInternalURL = "http://core.internal/v1"
+			c.CoreInternalURL = "http://core.internal"
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

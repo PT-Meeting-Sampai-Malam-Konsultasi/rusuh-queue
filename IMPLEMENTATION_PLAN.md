@@ -34,7 +34,7 @@ between them is `registerAdmission` (`queue` → `core`, ADR-0020, link 5).
 | 2 | Booking events | `core-worker` → `queue` | Outbox → relay → Valkey Stream `stream:booking` → consumer group `queue` (at least once, acked, dead-letter) | `booking.held`, `booking.paid`, `booking.expired` |
 | 3 | Shared state, key + nudge | both | The owner writes a key; sharded pub/sub (`SPUBLISH`) only says "re-read it". Readers also re-read on reconnect and on a timer, so a lost message costs only delay | Stock and sale settings from `core`; queue state from `queue` |
 | 4 | The client | `queue` → app → `core` | The app sends the admission token to `core` as `X-Admission-Token` | Detail, attendee check, hold |
-| 5 | Admission record | `queue` → `core` | `PUT /v1/internal/admissions/{slotId}` (`registerAdmission`, service token, 1 s, one retry) before the token goes to the user; `core` accepts only a token that matches its record. 503 `ADMISSION_UNAVAILABLE` when `core` fails | Every successful claim |
+| 5 | Admission record | `queue` → `core` | `POST /v1/core/admission` (`registerAdmission`, `X-Service-Key` = core's `SERVICE_KEY`, snake_case body, 1 s, one retry; core's existing route, agreed 10 Nov) before the token goes to the user; `core` accepts only a token that matches its record. 503 `ADMISSION_UNAVAILABLE` when `core` fails | Every successful claim |
 
 **Rule:** anything that changes a counter by a delta (held, paid, expired) goes on the stream, never on plain pub/sub,
 because pub/sub has no ack or replay. Pub/sub carries only "latest value wins" state that sits in a key.
@@ -428,6 +428,9 @@ reasons in the 14 advance-rule cases) and HTTP tests (MISSED on me, rejoin seq, 
       - `unreserved` equalled `core`'s available stock;
       - a poison event was dead-lettered;
       - a drift of −3 was corrected on the second reconcile.
+- [x] registerAdmission moved to core's existing `POST /v1/core/admission` (10 Nov, PR `fix/core-admission-contract`):
+      the documented `PUT /internal/admissions/{slotId}` was never built in core. Needs `CLAIM_REQUIRES_LOGIN=true`
+      (core requires `user_id`) and queue `CORE_INTERNAL_TOKEN` = core `SERVICE_KEY`.
 - [ ] Joint test with Backend 2 (replaces `fakecore`).
 - [x] Property test `TestStockBooksProperty` (`rapid`, 3 Nov), described under Verify below.
 
@@ -455,7 +458,7 @@ with no lost place; `streamFrom = 0` → every connect gets 409; 1,000 pre-open 
 - [x] `make test-cover` + `make cover`: 90% gate over hand-written code; 39.6% → 94.8%.
 - [x] `CI_VULN=off` repo override checked; `ci / checks` and `ci / image` required on `main`.
 - [x] Move both `uses:` refs from `@feature/shared-ci-cd` to `@v1` (rusuh-infra#5 merged and tagged; the branch is deleted).
-- [ ] Merge PR #24.
+- [x] Merge PR #24 (10 Nov).
 
 ### M6 — Hardening, load, handover (Wed 11 – Thu 12 Nov)
 

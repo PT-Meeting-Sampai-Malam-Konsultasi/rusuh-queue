@@ -34,7 +34,7 @@ type Config struct {
 
 	// CoreJWKSURL: core's public keys for access tokens (D-4), e.g. https://<core>/.well-known/jwks.json
 	CoreJWKSURL string
-	// CoreInternalURL: core's private base URL for registerAdmission, e.g. http://core-api.internal/v1.
+	// CoreInternalURL: core's origin for POST /v1/core/admission, e.g. http://core:3000.
 	// Empty turns registration off (claims answer without asking core).
 	CoreInternalURL      string
 	CoreInternalToken    string        // shared secret for core's internal endpoints

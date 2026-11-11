@@ -9,11 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
-	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/api"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/dto"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 )
@@ -26,30 +24,35 @@ type Admissions struct {
 	client *http.Client
 }
 
-// New calls core at base (CORE_INTERNAL_URL, e.g. http://core-api.internal/v1);
+// New calls core at base (CORE_INTERNAL_URL, core's origin, e.g. http://core:3000);
 // timeout bounds each attempt.
 func New(base, secret string, timeout time.Duration) *Admissions {
 	return &Admissions{base: strings.TrimRight(base, "/"), secret: secret, client: &http.Client{Timeout: timeout}}
 }
 
-// Register is safe to repeat: core keys the record by slot and keeps the latest token.
+type admission struct {
+	AdmissionToken string    `json:"admission_token"`
+	UserID         string    `json:"user_id"`
+	EventID        string    `json:"event_id"`
+	SlotID         string    `json:"slot_id"`
+	MaxTickets     int       `json:"max_tickets"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+// Register is safe to repeat: core keys the record by admission token and overwrites it.
 func (a *Admissions) Register(ctx context.Context, rec dto.AdmissionRecord) error {
-	body := api.AdmissionRecord{
-		Token: rec.Token, EventId: rec.EventID, DeviceId: rec.DeviceID, Seq: rec.Seq,
-		ReservedUnits: rec.ReservedUnits, ExpiresAt: rec.ExpiresAt.UTC(),
-	}
-	if rec.UserID != "" {
-		body.UserId = &rec.UserID
-	}
-	payload, err := json.Marshal(body)
+	payload, err := json.Marshal(admission{
+		AdmissionToken: rec.Token, UserID: rec.UserID, EventID: rec.EventID, SlotID: rec.SlotID,
+		MaxTickets: rec.ReservedUnits, ExpiresAt: rec.ExpiresAt.UTC(),
+	})
 	if err != nil {
 		return fmt.Errorf("coreapi: encode admission: %w", err)
 	}
-	endpoint := a.base + "/internal/admissions/" + url.PathEscape(rec.SlotID)
+	endpoint := a.base + "/v1/core/admission"
 
 	var last error
 	for range attempts {
-		status, err := a.put(ctx, endpoint, payload)
+		status, err := a.post(ctx, endpoint, payload)
 		switch {
 		case err == nil && status >= 200 && status < 300:
 			return nil
@@ -67,13 +70,13 @@ func (a *Admissions) Register(ctx context.Context, rec dto.AdmissionRecord) erro
 	return fmt.Errorf("%w: %v", entity.ErrAdmissionUnavailable, last)
 }
 
-func (a *Admissions) put(ctx context.Context, endpoint string, body []byte) (int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(body))
+func (a *Admissions) post(ctx context.Context, endpoint string, body []byte) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+a.secret)
+	req.Header.Set("X-Service-Key", a.secret)
 	resp, err := a.client.Do(req)
 	if err != nil {
 		return 0, err

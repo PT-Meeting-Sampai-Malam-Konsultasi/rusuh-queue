@@ -6,11 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/api"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/dto"
 	"github.com/PT-Meeting-Sampai-Malam-Konsultasi/rusuh-queue/internal/queue/domain/entity"
 )
@@ -20,7 +20,7 @@ var rec = dto.AdmissionRecord{
 	ExpiresAt: time.Date(2026, 11, 14, 10, 45, 0, 0, time.UTC),
 }
 
-// core answers with codes in order, then 204 for every later call.
+// core answers with codes in order, then 200 for every later call.
 func core(t *testing.T, codes ...int) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var calls atomic.Int32
@@ -30,37 +30,37 @@ func core(t *testing.T, codes ...int) (*httptest.Server, *atomic.Int32) {
 			w.WriteHeader(codes[n-1])
 			return
 		}
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &calls
 }
 
-func TestRegisterPutsTheRecordForItsSlot(t *testing.T) {
-	var got api.AdmissionRecord
-	var method, path, authz string
+func TestRegisterPostsTheAdmissionToCore(t *testing.T) {
+	var got map[string]any
+	var method, path, key string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		method, path, authz = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		method, path, key = r.Method, r.URL.Path, r.Header.Get("X-Service-Key")
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"stored":true}`))
 	}))
 	defer srv.Close()
 
-	if err := New(srv.URL+"/v1", "secret", time.Second).Register(context.Background(), rec); err != nil {
+	if err := New(srv.URL, "secret", time.Second).Register(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}
-	if method != http.MethodPut || path != "/v1/internal/admissions/s_x" || authz != "Bearer secret" {
-		t.Fatalf("request = %s %s %q", method, path, authz)
+	if method != http.MethodPost || path != "/v1/core/admission" || key != "secret" {
+		t.Fatalf("request = %s %s %q", method, path, key)
 	}
-	if got.UserId == nil || *got.UserId != "user_1" {
-		t.Fatalf("userId = %v, want user_1", got.UserId)
+	want := map[string]any{
+		"admission_token": "tok", "user_id": "user_1", "event_id": "evt1", "slot_id": "s_x",
+		"max_tickets": float64(2), "expires_at": "2026-11-14T10:45:00Z",
 	}
-	got.UserId = nil
-	want := api.AdmissionRecord{Token: "tok", EventId: "evt1", DeviceId: "w_1", Seq: 7, ReservedUnits: 2, ExpiresAt: rec.ExpiresAt}
-	if got != want {
-		t.Fatalf("body = %+v, want %+v", got, want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("body = %v, want %v", got, want)
 	}
 }
 
