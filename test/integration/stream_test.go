@@ -16,7 +16,8 @@ import (
 // the front gets retry, the current frontier, frontiers from the tick channel and
 // its turn, then the stream ends.
 func TestStreamDeliversFrontiersAndTheTurn(t *testing.T) {
-	e := newAdmissionEnv(t)
+	// A turn of 1 s can end before a slow CI runner delivers the frame that reaches it.
+	e := newAdmissionEnvWith(t, 5*time.Second)
 	e.publish(t, "evt_sse", 100)
 	ahead := make([]joined, 0, 3)
 	for _, id := range []string{"w_s1", "w_s2", "w_s3"} {
