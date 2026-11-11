@@ -470,9 +470,9 @@ Backend 2 before coding.
       `false`, registered as `msmk-prod-queue:6`; ships with the next release.
 - [ ] Add the same four keys to `queue_extra_environment` in the prod tfvars (gitignored, applied by Edy), or the next
       Terraform change to the queue task definition registers a revision without them.
-- [ ] Admission `expires_at`: core reads it as the end of the whole order (claim + 5 min Detail + 10 min payment, cap
-      16 min) and requires the record at payment entry; the queue sends the lease end (claim + 5 min). Agree one
-      meaning (separate `order_expires_at`, or core keeps the record for the payment window).
+- [x] Admission `expires_at` (11 Nov, branch `fix/core-admission-expiry`): the queue adapts to core. The record sent to
+      `registerAdmission` ends at lease end + `CORE_PAYMENT_WINDOW` (default 10 min = core's `PAYMENT_TTL_MS`), so
+      Detail shows the lease end and payment entry finds the record. The token `exp` and the lease stay at 5 min.
 - [ ] Core → queue feedback: core writes none of `core:events`, `core:{evt}:sale|stock` or `stream:booking`; it sends
       an SQS `empty-slot` message that infra does not provision. Agree who writes the event list, sale times and stock,
       and how held / paid / expired reach the queue.
