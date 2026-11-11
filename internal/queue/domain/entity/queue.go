@@ -24,6 +24,10 @@ type Config struct {
 	LoginWindow time.Duration
 	// ClaimRequiresLogin refuses claims without an access token (ADR-0021, env CLAIM_REQUIRES_LOGIN).
 	ClaimRequiresLogin bool
+	// CorePaymentWindow extends the admission record sent to core past the lease
+	// end: core reads expires_at as the end of the whole order and still needs
+	// the record when the user enters payment (core PAYMENT_TTL_MS, 10 min).
+	CorePaymentWindow time.Duration
 	// TransfersPerEvent is how often an account may move its place to another
 	// device in one event (D-13, env PLACE_TRANSFERS_PER_EVENT); 0 turns moving off.
 	TransfersPerEvent int64

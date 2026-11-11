@@ -229,7 +229,7 @@ func (s *QueueUsecase) Claim(ctx context.Context, eventID, deviceID, userID stri
 	// core accepts only a token it has stored, so the user must not get one core missed.
 	if err := s.admits.Register(ctx, dto.AdmissionRecord{
 		Token: raw, EventID: eventID, DeviceID: deviceID, UserID: userID, Seq: tokenSeq,
-		SlotID: res.SlotID, ReservedUnits: res.Units, ExpiresAt: res.EndsAt,
+		SlotID: res.SlotID, ReservedUnits: res.Units, ExpiresAt: res.EndsAt.Add(s.cfg.CorePaymentWindow),
 	}); err != nil {
 		return nil, err
 	}
