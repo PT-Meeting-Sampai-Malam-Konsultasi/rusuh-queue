@@ -86,6 +86,7 @@ func queueConfig(orderWindow, missWindow time.Duration) entity.Config {
 		MissWindow:     missWindow,
 		// D-13: one move of a place to another device per account per event.
 		TransfersPerEvent: 1,
+		CorePaymentWindow: 10 * time.Minute,
 	}
 }
 

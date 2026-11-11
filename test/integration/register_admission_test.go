@@ -96,7 +96,7 @@ func TestClaimReturnsOnlyATokenCoreRecorded(t *testing.T) {
 	n := len(book.recs)
 	book.mu.Unlock()
 	if !ok || n != 1 || stored.AdmissionToken != adm.AdmissionToken || stored.SlotID != adm.SlotId ||
-		stored.EventID != "evt_reg" || stored.MaxTickets != adm.ReservedUnits || !stored.ExpiresAt.Equal(adm.ExpiresAt) {
+		stored.EventID != "evt_reg" || stored.MaxTickets != adm.ReservedUnits || !stored.ExpiresAt.Equal(adm.ExpiresAt.Add(10*time.Minute)) {
 		t.Fatalf("core stored %+v (%d slots), user got %+v", stored, n, adm)
 	}
 }

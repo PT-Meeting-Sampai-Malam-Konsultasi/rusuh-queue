@@ -87,6 +87,7 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 			LoginWindow:        cfg.LoginWindow,
 			ClaimRequiresLogin: cfg.ClaimRequiresLogin,
 			TransfersPerEvent:  cfg.PlaceTransfersPerEvent,
+			CorePaymentWindow:  cfg.CorePaymentWindow,
 		},
 		Valkey:     s.valkey,
 		Signer:     keys,

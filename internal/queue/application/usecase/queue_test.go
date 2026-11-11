@@ -22,6 +22,8 @@ var testCfg = entity.Config{
 	OrderWindow:    5 * time.Minute,
 	MissWindow:     5 * time.Minute,
 	LoginWindow:    10 * time.Minute,
+	// core keeps the record for the payment window after the lease.
+	CorePaymentWindow: 10 * time.Minute,
 }
 
 func TestClaimMapsEveryStatus(t *testing.T) {
@@ -99,7 +101,7 @@ func TestClaimSignsAdmission(t *testing.T) {
 	if c.Event != "evt1" || c.Seq != 7 || c.Slot != "s_x" || c.Reserved != 2 || c.Subject != "w_1" || c.ExpiresAt.Unix() != ends.Unix() {
 		t.Fatalf("claims = %+v", c)
 	}
-	want := dto.AdmissionRecord{Token: adm.Token, EventID: "evt1", DeviceID: "w_1", UserID: "user_1", Seq: 7, SlotID: "s_x", ReservedUnits: 2, ExpiresAt: ends}
+	want := dto.AdmissionRecord{Token: adm.Token, EventID: "evt1", DeviceID: "w_1", UserID: "user_1", Seq: 7, SlotID: "s_x", ReservedUnits: 2, ExpiresAt: ends.Add(10 * time.Minute)}
 	if recorded != want {
 		t.Fatalf("recorded = %+v, want %+v", recorded, want)
 	}
