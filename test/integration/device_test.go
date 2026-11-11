@@ -75,7 +75,7 @@ func newDeviceMux(t *testing.T) *http.ServeMux {
 }
 
 func register(mux http.Handler, clientIP, turnstileToken, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/v1/devices", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/queue/devices", strings.NewReader(body))
 	req.RemoteAddr = "10.1.2.3:443" // a trusted proxy (Cloudflare in the lab)
 	req.Header.Set("CF-Connecting-IP", clientIP)
 	req.Header.Set("Content-Type", "application/json")
@@ -140,7 +140,7 @@ func TestRegisterDeviceLimitsEleventhPerIP(t *testing.T) {
 func TestRegisterDeviceIgnoresSpoofedClientIP(t *testing.T) {
 	mux := newDeviceMux(t)
 	for i := range 11 {
-		req := httptest.NewRequest(http.MethodPost, "/v1/devices", strings.NewReader(`{"platform":"web"}`))
+		req := httptest.NewRequest(http.MethodPost, "/v1/queue/devices", strings.NewReader(`{"platform":"web"}`))
 		req.RemoteAddr = "198.51.100.9:5555" // not a trusted proxy
 		req.Header.Set("CF-Connecting-IP", fmt.Sprintf("203.0.113.%d", i+1))
 		req.Header.Set("X-Turnstile-Token", "good")

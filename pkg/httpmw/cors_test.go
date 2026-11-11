@@ -29,7 +29,7 @@ func TestCORS(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, "/v1/devices", nil)
+			req := httptest.NewRequest(tt.method, "/v1/queue/devices", nil)
 			if tt.origin != "" {
 				req.Header.Set("Origin", tt.origin)
 			}

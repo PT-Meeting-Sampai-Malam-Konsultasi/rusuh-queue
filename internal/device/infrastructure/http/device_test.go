@@ -30,7 +30,7 @@ func newMux(t *testing.T) (*stdhttp.ServeMux, *mock_inbound.MockIDeviceUsecase) 
 }
 
 func post(mux *stdhttp.ServeMux, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(stdhttp.MethodPost, "/v1/devices", strings.NewReader(body))
+	req := httptest.NewRequest(stdhttp.MethodPost, "/v1/queue/devices", strings.NewReader(body))
 	req.RemoteAddr = "203.0.113.7:4242"
 	req.Header.Set("X-Turnstile-Token", "ts")
 	w := httptest.NewRecorder()

@@ -29,7 +29,7 @@ internal/<domain>/
 
 | Domain | Does | Routes |
 | --- | --- | --- |
-| `device` | Device token (Turnstile / attestation), JWKS | `POST /v1/devices`, `GET /.well-known/jwks.json` |
+| `device` | Device token (Turnstile / attestation), JWKS | `POST /v1/queue/devices`, `GET /.well-known/jwks.json` |
 | `queue` | Join, my place, leave, frontier, claim | `/v1/queue/{eventId}/join`, `/me`, `/frontier`, `/claim` |
 | `controller` | Leader election, 1 s tick, purge, checkpoint (background) | none |
 | `admin` | Queue settings per event | `PATCH /admin/events/{eventId}/queue` (501 until M5) |
