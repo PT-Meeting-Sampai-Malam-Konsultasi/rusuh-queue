@@ -89,6 +89,33 @@ func TestAccount(t *testing.T) {
 	}
 }
 
+func TestAccountWithCoreAuthClaims(t *testing.T) {
+	tk := testkit.NewTokens(t)
+	v := tk.Verifier().WithAccess(auth.Access{Issuer: "rusuh-auth", Audience: "rusuh-api"})
+	ctx := context.Background()
+	bearer := func(raw string) *http.Request { return request(map[string]string{"Authorization": "Bearer " + raw}) }
+
+	if id, err := v.Account(ctx, bearer(tk.Core.Token(t, "rusuh-auth", "acc_1", nil, "rusuh-api"))); err != nil || id != "acc_1" {
+		t.Fatalf("core auth token: %q, %v", id, err)
+	}
+	for name, raw := range map[string]string{
+		"default issuer":   tk.Core.Token(t, auth.CoreIssuer, "acc_1", nil, "rusuh-api"),
+		"default audience": tk.Core.Token(t, "rusuh-auth", "acc_1", nil, auth.AccessAudience),
+	} {
+		if _, err := v.Account(ctx, bearer(raw)); !errors.Is(err, auth.ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	defaults := tk.Verifier().WithAccess(auth.Access{RequireOTP: true})
+	if id, err := defaults.Account(ctx, bearer(tk.Core.Access(t, "user_1"))); err != nil || id != "user_1" {
+		t.Fatalf("empty issuer and audience keep the defaults: %q, %v", id, err)
+	}
+	if _, err := defaults.Account(ctx, bearer(tk.Core.Token(t, "someone", "user_1", []string{"otp"}, auth.AccessAudience))); !errors.Is(err, auth.ErrInvalid) {
+		t.Fatalf("issuer check stays on: %v", err)
+	}
+}
+
 func TestOperator(t *testing.T) {
 	sso := testkit.NewIssuer(t)
 	v := auth.NewAdmin(sso.URL(), "rusuh-admin")

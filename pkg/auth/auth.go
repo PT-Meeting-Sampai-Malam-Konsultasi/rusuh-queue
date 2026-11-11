@@ -39,13 +39,36 @@ type AccessClaims struct {
 	jwt.RegisteredClaims
 }
 
+// Access is what queue requires of core's access tokens. core's auth module
+// signs iss rusuh-auth, aud rusuh-api and no amr, unlike tokens.md.
+type Access struct {
+	Issuer     string
+	Audience   string
+	RequireOTP bool
+}
+
 type Verifier struct {
-	keys *token.Keyring
-	core *remotejwks.Verifier
+	keys   *token.Keyring
+	core   *remotejwks.Verifier
+	access Access
 }
 
 func New(keys *token.Keyring, core *remotejwks.Verifier) *Verifier {
-	return &Verifier{keys: keys, core: core}
+	return &Verifier{keys: keys, core: core, access: Access{Issuer: CoreIssuer, Audience: AccessAudience, RequireOTP: true}}
+}
+
+// WithAccess returns a copy that checks access tokens against a. An empty
+// issuer or audience keeps the default, so neither check can be switched off.
+func (v *Verifier) WithAccess(a Access) *Verifier {
+	c := *v
+	if a.Issuer != "" {
+		c.access.Issuer = a.Issuer
+	}
+	if a.Audience != "" {
+		c.access.Audience = a.Audience
+	}
+	c.access.RequireOTP = a.RequireOTP
+	return &c
 }
 
 // Device returns the caller's device id from X-Device-Token.
@@ -95,15 +118,18 @@ func (v *Verifier) Account(ctx context.Context, r *http.Request) (string, error)
 	}
 	var c AccessClaims
 	err := v.core.Verify(ctx, raw, &c,
-		jwt.WithIssuer(CoreIssuer),
-		jwt.WithAudience(AccessAudience),
+		jwt.WithIssuer(v.access.Issuer),
+		jwt.WithAudience(v.access.Audience),
 		jwt.WithIssuedAt(),
 	)
 	if err != nil {
 		return "", wrapRemote(err)
 	}
-	if c.Subject == "" || !slices.Contains(c.AMR, "otp") {
-		return "", fmt.Errorf("%w: access token without sub or amr=otp", ErrInvalid)
+	if c.Subject == "" {
+		return "", fmt.Errorf("%w: access token without sub", ErrInvalid)
+	}
+	if v.access.RequireOTP && !slices.Contains(c.AMR, "otp") {
+		return "", fmt.Errorf("%w: access token without amr=otp", ErrInvalid)
 	}
 	return c.Subject, nil
 }

@@ -462,6 +462,23 @@ with no lost place; `streamFrom = 0` → every connect gets 409; 1,000 pre-open 
 
 ### M6 — Hardening, load, handover (Wed 11 – Thu 12 Nov)
 
+**P0 — align with merged `rusuh-core` `main` (`4ec1439`, 11 Nov); blocks the whole flow, do first.** Details in
+`docs/implementation-flow.md` → "Does merged rusuh-core main fit the queue? (11 Nov)". Agree the direction with
+Backend 2 before coding.
+- [x] Access token and public keys (11 Nov, branch `fix/core-access-token`): `CORE_JWKS` (inline JWKS, same JSON as
+      core's `AUTH_JWKS`), `CORE_ISSUER`, `CORE_AUDIENCE`, `CORE_ACCESS_REQUIRE_OTP`. Prod: `rusuh-auth` / `rusuh-api` /
+      `false`, registered as `msmk-prod-queue:6`; ships with the next release.
+- [ ] Add the same four keys to `queue_extra_environment` in the prod tfvars (gitignored, applied by Edy), or the next
+      Terraform change to the queue task definition registers a revision without them.
+- [ ] Admission `expires_at`: core reads it as the end of the whole order (claim + 5 min Detail + 10 min payment, cap
+      16 min) and requires the record at payment entry; the queue sends the lease end (claim + 5 min). Agree one
+      meaning (separate `order_expires_at`, or core keeps the record for the payment window).
+- [ ] Core → queue feedback: core writes none of `core:events`, `core:{evt}:sale|stock` or `stream:booking`; it sends
+      an SQS `empty-slot` message that infra does not provision. Agree who writes the event list, sale times and stock,
+      and how held / paid / expired reach the queue.
+- [ ] Ask core for: admission record per slot (latest token wins), unique index on `slot_id`, Home state from
+      `q:{evt}:frontier`, and an expiring operator JWT (`amr: mfa`) instead of the static `QUEUE_ADMIN_TOKEN`.
+
 - [ ] Security tests: forged and cross-device tokens, admission token used after `exp`, replayed claims, rate limits,
       CORS from a foreign origin.
 - [ ] k6 on the lab (`../testing-platform`): `queue-join-spike`, `frontier-poll`, `sse-front`, `claim-race`; record

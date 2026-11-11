@@ -32,8 +32,15 @@ type Config struct {
 	TrustedProxyCIDRs []string
 	CORSOrigins       []string
 
-	// CoreJWKSURL: core's public keys for access tokens (D-4), e.g. https://<core>/.well-known/jwks.json
+	// CoreJWKSURL: core's public keys for access tokens (D-4), e.g. https://<core>/.well-known/jwks.json.
+	// CoreJWKS: the same JWKS document inline (core's AUTH_JWKS); set one of the two.
 	CoreJWKSURL string
+	CoreJWKS    string
+	// CoreIssuer, CoreAudience, CoreAccessRequireOTP: checks on core's access tokens
+	// (core's auth module signs rusuh-auth / rusuh-api without amr).
+	CoreIssuer           string
+	CoreAudience         string
+	CoreAccessRequireOTP bool
 	// CoreInternalURL: core's origin for POST /v1/core/admission, e.g. http://core:3000.
 	// Empty turns registration off (claims answer without asking core).
 	CoreInternalURL      string
