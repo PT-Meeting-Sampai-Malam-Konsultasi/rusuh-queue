@@ -250,3 +250,37 @@ func TestWarmLoadsKeysBeforeTheFirstRequest(t *testing.T) {
 		t.Fatalf("fetches = %d, want 1", n)
 	}
 }
+
+func TestStaticVerifiesWithoutFetching(t *testing.T) {
+	c := newCore(t, "akun-202611-01")
+	x := base64.RawURLEncoding.EncodeToString(c.keys["akun-202611-01"].Public().(ed25519.PublicKey))
+	v, err := NewStatic(fmt.Sprintf(`{"keys":[{"kid":"akun-202611-01","crv":"Ed25519","x":%q,"kty":"OKP"}]}`, x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Warm()
+	var claims jwt.RegisteredClaims
+	if err := v.Verify(context.Background(), c.sign(t, "akun-202611-01"), &claims); err != nil || claims.Subject != "u1" {
+		t.Fatalf("claims = %+v, err = %v", claims, err)
+	}
+	c.add("other")
+	if err := v.Verify(context.Background(), c.sign(t, "other"), &claims); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown kid: err = %v", err)
+	}
+	if !v.Configured() || c.fetches.Load() != 0 {
+		t.Fatalf("configured = %t, fetches = %d", v.Configured(), c.fetches.Load())
+	}
+}
+
+func TestStaticRejectsBadDocuments(t *testing.T) {
+	for name, doc := range map[string]string{
+		"not json": "{",
+		"no keys":  `{"keys":[]}`,
+		"no kid":   `{"keys":[{"kty":"OKP","crv":"Ed25519","x":"8WuHRGc0WLxS0VezP7ePf9_z83M4VOGK2PFoCX0KptA"}]}`,
+		"rsa":      `{"keys":[{"kid":"a","kty":"RSA","n":"x","e":"AQAB"}]}`,
+	} {
+		if _, err := NewStatic(doc); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}

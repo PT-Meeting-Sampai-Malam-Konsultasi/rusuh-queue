@@ -43,8 +43,9 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 	if cfg.RateWindow < cfg.LoginWindow {
 		return fmt.Errorf("RATE_WINDOW (%s) must not be shorter than LOGIN_WINDOW (%s)", cfg.RateWindow, cfg.LoginWindow)
 	}
-	if cfg.CoreJWKSURL == "" {
-		slog.Warn("CORE_JWKS_URL empty: joins with an access token are refused until core publishes its keys")
+	coreKeys, err := coreKeyring(cfg)
+	if err != nil {
+		return err
 	}
 	var admissions queueoutbound.IAdmissions
 	switch {
@@ -56,9 +57,10 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 		admissions = coreapi.New(cfg.CoreInternalURL, cfg.CoreInternalToken, cfg.CoreAdmissionTimeout)
 	}
 	limiter := ratelimit.New(s.valkey)
-	coreKeys := remotejwks.New(cfg.CoreJWKSURL)
 	coreKeys.Warm() // load core's keys now, not on the first logged-in join
-	verifier := auth.New(keys, coreKeys)
+	verifier := auth.New(keys, coreKeys).WithAccess(auth.Access{
+		Issuer: cfg.CoreIssuer, Audience: cfg.CoreAudience, RequireOTP: cfg.CoreAccessRequireOTP,
+	})
 
 	RegisterDevice(mux, DeviceDeps{
 		Config: deviceentity.Config{
@@ -154,4 +156,20 @@ func loadKeyring(cfg *config.Config) (*token.Keyring, error) {
 		return nil, err
 	}
 	return token.NewKeyring(keys...)
+}
+
+func coreKeyring(cfg *config.Config) (*remotejwks.Verifier, error) {
+	switch {
+	case cfg.CoreJWKS != "" && cfg.CoreJWKSURL != "":
+		return nil, errors.New("set CORE_JWKS or CORE_JWKS_URL, not both")
+	case cfg.CoreJWKS != "":
+		v, err := remotejwks.NewStatic(cfg.CoreJWKS)
+		if err != nil {
+			return nil, fmt.Errorf("CORE_JWKS: %w", err)
+		}
+		return v, nil
+	case cfg.CoreJWKSURL == "":
+		slog.Warn("CORE_JWKS and CORE_JWKS_URL empty: joins with an access token are refused")
+	}
+	return remotejwks.New(cfg.CoreJWKSURL), nil
 }

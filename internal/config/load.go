@@ -51,6 +51,10 @@ func Load() (*Config, error) {
 		CORSOrigins:       getList("CORS_ORIGINS"),
 
 		CoreJWKSURL:            os.Getenv("CORE_JWKS_URL"),
+		CoreJWKS:               os.Getenv("CORE_JWKS"),
+		CoreIssuer:             getEnv("CORE_ISSUER", "rusuh-core"),
+		CoreAudience:           getEnv("CORE_AUDIENCE", "rusuh-queue"),
+		CoreAccessRequireOTP:   getBool("CORE_ACCESS_REQUIRE_OTP", true),
 		CoreInternalURL:        os.Getenv("CORE_INTERNAL_URL"),
 		CoreInternalToken:      os.Getenv("CORE_INTERNAL_TOKEN"),
 		CoreAdmissionTimeout:   getDuration("CORE_ADMISSION_TIMEOUT", time.Second),

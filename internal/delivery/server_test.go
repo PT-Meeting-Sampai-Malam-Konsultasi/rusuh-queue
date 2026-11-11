@@ -158,6 +158,29 @@ func TestLoadKeyring(t *testing.T) {
 	}
 }
 
+func TestCoreKeyring(t *testing.T) {
+	const jwks = `{"keys":[{"kid":"akun-202611-01","crv":"Ed25519","x":"8WuHRGc0WLxS0VezP7ePf9_z83M4VOGK2PFoCX0KptA","kty":"OKP"}]}`
+	for name, c := range map[string]struct {
+		cfg        config.Config
+		ok, inline bool
+	}{
+		"inline":  {cfg: config.Config{CoreJWKS: jwks}, ok: true, inline: true},
+		"url":     {cfg: config.Config{CoreJWKSURL: "http://core/.well-known/jwks.json"}, ok: true},
+		"neither": {cfg: config.Config{}, ok: true},
+		"both":    {cfg: config.Config{CoreJWKS: jwks, CoreJWKSURL: "http://core/jwks"}},
+		"bad":     {cfg: config.Config{CoreJWKS: `{"keys":[]}`}},
+	} {
+		v, err := coreKeyring(&c.cfg)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: err = %v", name, err)
+			continue
+		}
+		if c.ok && v.Configured() != (c.cfg.CoreJWKS != "" || c.cfg.CoreJWKSURL != "") {
+			t.Errorf("%s: configured = %t", name, v.Configured())
+		}
+	}
+}
+
 func TestStreamPlacesTranslatesQueueErrors(t *testing.T) {
 	q := mock_inbound.NewMockIQueueUsecase(gomock.NewController(t))
 	p := streamPlaces{q: q}

@@ -10,6 +10,9 @@
 //     unreachable JWKS costs one attempt a minute, not one per request.
 //   - When the keys cannot be loaded, Verify returns ErrUnavailable (the caller
 //     answers 503), never ErrInvalid (401).
+//
+// NewStatic takes the JWKS document itself (core passes its keys by env, not by
+// URL) and never fetches.
 package remotejwks
 
 import (
@@ -19,8 +22,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,9 +45,10 @@ const (
 )
 
 type Verifier struct {
-	url  string
-	http *http.Client
-	now  func() time.Time
+	url    string
+	static bool
+	http   *http.Client
+	now    func() time.Time
 
 	mu       sync.Mutex
 	keys     map[string]ed25519.PublicKey
@@ -56,13 +62,23 @@ func New(url string) *Verifier {
 	return &Verifier{url: url, http: &http.Client{Timeout: 2 * time.Second}, now: time.Now}
 }
 
-// Configured reports whether a JWKS URL is set.
-func (v *Verifier) Configured() bool { return v != nil && v.url != "" }
+func NewStatic(jwks string) (*Verifier, error) {
+	keys, err := parseKeys(strings.NewReader(jwks))
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("remotejwks: no Ed25519 key with a kid in the JWKS")
+	}
+	return &Verifier{static: true, keys: keys, now: time.Now}, nil
+}
+
+func (v *Verifier) Configured() bool { return v != nil && (v.url != "" || v.static) }
 
 // Warm starts loading the keys in the background, so the first request after
 // startup does not wait for them.
 func (v *Verifier) Warm() {
-	if !v.Configured() {
+	if !v.Configured() || v.static {
 		return
 	}
 	v.mu.Lock()
@@ -77,7 +93,7 @@ func (v *Verifier) Warm() {
 // bad token and ErrUnavailable when the keys could not be loaded.
 func (v *Verifier) Verify(ctx context.Context, raw string, claims jwt.Claims, opts ...jwt.ParserOption) error {
 	if !v.Configured() {
-		return fmt.Errorf("%w: no JWKS URL configured", ErrInvalid)
+		return fmt.Errorf("%w: no JWKS configured", ErrInvalid)
 	}
 	opts = append([]jwt.ParserOption{
 		jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}),
@@ -100,6 +116,12 @@ func (v *Verifier) Verify(ctx context.Context, raw string, claims jwt.Claims, op
 }
 
 func (v *Verifier) key(ctx context.Context, kid string) (ed25519.PublicKey, error) {
+	if v.static {
+		if k, ok := v.keys[kid]; ok {
+			return k, nil
+		}
+		return nil, fmt.Errorf("remotejwks: unknown kid %q", kid)
+	}
 	v.mu.Lock()
 	now := v.now()
 	if k, ok := v.keys[kid]; ok {
@@ -171,12 +193,16 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]ed25519.PublicKey, err
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("remotejwks: fetch: status %d", resp.StatusCode)
 	}
+	return parseKeys(http.MaxBytesReader(nil, resp.Body, 64<<10))
+}
+
+func parseKeys(r io.Reader) (map[string]ed25519.PublicKey, error) {
 	var set struct {
 		Keys []struct {
 			Kty, Crv, X, Kid string
 		} `json:"keys"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 64<<10)).Decode(&set); err != nil {
+	if err := json.NewDecoder(r).Decode(&set); err != nil {
 		return nil, fmt.Errorf("remotejwks: decode: %w", err)
 	}
 	keys := make(map[string]ed25519.PublicKey, len(set.Keys))
