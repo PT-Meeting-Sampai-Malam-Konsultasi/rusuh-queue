@@ -58,6 +58,7 @@ func Load() (*Config, error) {
 		CoreInternalURL:        os.Getenv("CORE_INTERNAL_URL"),
 		CoreInternalToken:      os.Getenv("CORE_INTERNAL_TOKEN"),
 		CoreAdmissionTimeout:   getDuration("CORE_ADMISSION_TIMEOUT", time.Second),
+		CorePaymentWindow:      getDuration("CORE_PAYMENT_WINDOW", 10*time.Minute),
 		RLJoinPerDevice:        getInt("RL_JOIN_PER_DEVICE", 30),
 		PlaceTransfersPerEvent: getInt("PLACE_TRANSFERS_PER_EVENT", 1),
 		LoginWindow:            getDuration("LOGIN_WINDOW", 3*time.Minute),

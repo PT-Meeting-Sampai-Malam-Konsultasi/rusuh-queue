@@ -46,6 +46,7 @@ type Config struct {
 	CoreInternalURL      string
 	CoreInternalToken    string        // shared secret for core's internal endpoints
 	CoreAdmissionTimeout time.Duration // per attempt; one retry
+	CorePaymentWindow    time.Duration // added to the lease end in the record core stores (core PAYMENT_TTL_MS)
 	RLJoinPerDevice      int64         // joins per minute per device
 	// LoginWindow: the turn of a device not logged in before its turn (ADR-0021); ClaimRequiresLogin: claim needs an account.
 	LoginWindow            time.Duration

@@ -32,17 +32,20 @@ func TestLoadCoreAccessSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.CoreIssuer != "rusuh-core" || c.CoreAudience != "rusuh-queue" || !c.CoreAccessRequireOTP || c.CoreJWKS != "" {
+	if c.CoreIssuer != "rusuh-core" || c.CoreAudience != "rusuh-queue" || !c.CoreAccessRequireOTP || c.CoreJWKS != "" ||
+		c.CorePaymentWindow != 10*time.Minute {
 		t.Fatalf("defaults = %+v", c)
 	}
 	t.Setenv("CORE_JWKS", `{"keys":[]}`)
 	t.Setenv("CORE_ISSUER", "rusuh-auth")
 	t.Setenv("CORE_AUDIENCE", "rusuh-api")
 	t.Setenv("CORE_ACCESS_REQUIRE_OTP", "false")
+	t.Setenv("CORE_PAYMENT_WINDOW", "15m")
 	if c, err = Load(); err != nil {
 		t.Fatal(err)
 	}
-	if c.CoreIssuer != "rusuh-auth" || c.CoreAudience != "rusuh-api" || c.CoreAccessRequireOTP || c.CoreJWKS != `{"keys":[]}` {
+	if c.CoreIssuer != "rusuh-auth" || c.CoreAudience != "rusuh-api" || c.CoreAccessRequireOTP || c.CoreJWKS != `{"keys":[]}` ||
+		c.CorePaymentWindow != 15*time.Minute {
 		t.Fatalf("config = %+v", c)
 	}
 }
