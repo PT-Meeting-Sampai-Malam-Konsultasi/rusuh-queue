@@ -31,14 +31,19 @@ const (
 
 func newAdmissionEnv(t *testing.T) admissionEnv {
 	t.Helper()
+	return newAdmissionEnvWith(t, testMissWindow)
+}
+
+func newAdmissionEnvWith(t *testing.T, missWindow time.Duration) admissionEnv {
+	t.Helper()
 	client := testkit.Valkey(t)
 	db := testkit.Postgres(t)
 	cfg := fastController()
 	cfg.PurgeGrace = 200 * time.Millisecond
-	cfg.HistWindow = testMissWindow
+	cfg.HistWindow = missWindow
 	startControllerWith(t, client, db, cfg)
 	time.Sleep(300 * time.Millisecond) // subscriptions
-	return admissionEnv{newQueueEnvOn(t, client, queueConfig(testOrderWindow, testMissWindow))}
+	return admissionEnv{newQueueEnvOn(t, client, queueConfig(testOrderWindow, missWindow))}
 }
 
 // publish makes core's documents for an open sale and nudges, then waits for the queue.
