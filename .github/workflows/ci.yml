@@ -16,7 +16,7 @@ jobs:
       contents: read
       packages: write
     with:
-      service: rusuh-queue
+      service: msmk-queue
       runtime: go
       runtime-version-file: go.mod
       format: make fmt-check
@@ -62,5 +62,5 @@ jobs:
       packages: read
       id-token: write
     with:
-      service: rusuh-queue
+      service: msmk-queue
       environment: production
