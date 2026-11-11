@@ -64,3 +64,6 @@ jobs:
     with:
       service: msmk-queue
       environment: production
+      ecs-service: msmk-prod-queue
+      ecs-task-family: msmk-prod-queue
+      ecs-container: queue
