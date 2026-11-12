@@ -20,7 +20,7 @@ type registerResponse struct {
 	ExpiresAt   time.Time `json:"expiresAt"`
 }
 
-// RegisterDevice is registerDevice: POST /v1/devices (FR-04, NFR-07).
+// RegisterDevice is registerDevice: POST /v1/queue/devices (FR-04, NFR-07).
 func (h *DeviceHandler) RegisterDevice(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	var body api.RegisterDeviceJSONBody
 	dec := json.NewDecoder(stdhttp.MaxBytesReader(w, r.Body, maxBody))

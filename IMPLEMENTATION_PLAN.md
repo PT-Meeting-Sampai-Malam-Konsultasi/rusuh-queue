@@ -195,7 +195,7 @@ id, OpenTelemetry, panic recovery, a 16 KB body limit and an origin allowlist fo
 
 | Operation | Auth | Behaviour | Errors |
 | --- | --- | --- | --- |
-| `registerDevice` `POST /devices` | Turnstile (web) or attestation (mobile) | Verify (2 s timeout), mint a device token (30 days, `sub` = random device id, `plat`) | 400, 429 per IP / subnet |
+| `registerDevice` `POST /queue/devices` | Turnstile (web) or attestation (mobile) | Verify (2 s timeout), mint a device token (30 days, `sub` = random device id, `plat`) | 400, 429 per IP / subnet |
 | `joinQueue` `POST /queue/{evt}/join` | device token (+ optional bearer) | `rusuh_join_v1`; mint a queue token (`evt`, `dev`, `seq`, `exp` = sale end + 1 day) | 409 `ACCOUNT_HAS_PLACE_ELSEWHERE`, 410 `QUEUE_CLOSED`, 429 |
 | `getMyPlace` `GET /queue/{evt}/me` | device + queue token | After the lottery: return `seq` and a new queue token | 401 |
 | `getFrontier` `GET /queue/{evt}/frontier` | none | Return `q:{evt}:frontier` as is; `Cache-Control: public, max-age=1`; 250 ms in-process cache per task | — |

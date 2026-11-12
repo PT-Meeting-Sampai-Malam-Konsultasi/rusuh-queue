@@ -35,7 +35,7 @@ func TestIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("POST", "/v1/devices", nil)
+			req := httptest.NewRequest("POST", "/v1/queue/devices", nil)
 			req.RemoteAddr = tt.remote
 			if tt.header != "" {
 				req.Header.Set(tt.header, tt.value)
