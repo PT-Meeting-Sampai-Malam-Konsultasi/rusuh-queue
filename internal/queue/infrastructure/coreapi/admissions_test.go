@@ -56,7 +56,7 @@ func TestRegisterPostsTheAdmissionToCore(t *testing.T) {
 		t.Fatalf("request = %s %s %q", method, path, key)
 	}
 	want := map[string]any{
-		"admission_token": "tok", "user_id": "user_1", "event_id": "evt1", "slot_id": "s_x",
+		"admission_token": "tok", "user_id": "user_1", "event_id": "evt1", "slot_id": "s_x", "device_id": "w_1",
 		"max_tickets": float64(2), "expires_at": "2026-11-14T10:45:00Z",
 	}
 	if !reflect.DeepEqual(got, want) {
