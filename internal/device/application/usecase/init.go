@@ -19,5 +19,6 @@ type DeviceUsecase struct {
 
 // New builds the concrete Service implementation for device.
 func NewDevice(cfg entity.Config, human outbound.IHumanVerifier, att outbound.IAttestor, limiter outbound.IRateLimiter, signer outbound.ISigner) inbound.IDeviceUsecase {
+	registerVerificationGauge(cfg.SkipVerification)
 	return &DeviceUsecase{cfg: cfg, human: human, attest: att, limiter: limiter, signer: signer, now: time.Now}
 }

@@ -24,6 +24,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	deviceVerificationOff, err := getDeviceVerificationOff()
+	if err != nil {
+		return nil, err
+	}
 
 	return &Config{
 		Port: getEnv("PORT", "8080"),
@@ -45,6 +49,8 @@ func Load() (*Config, error) {
 		TurnstileVerifyURL: os.Getenv("TURNSTILE_VERIFY_URL"),
 		TurnstileHostnames: getList("TURNSTILE_HOSTNAMES"),
 		Attestor:           getEnv("ATTESTOR", "sandbox"),
+
+		DeviceVerificationOff: deviceVerificationOff,
 
 		ClientIPHeader:    os.Getenv("CLIENT_IP_HEADER"),
 		TrustedProxyCIDRs: getList("TRUSTED_PROXY_CIDRS"),
@@ -113,6 +119,17 @@ func getRequiredBool(key string, fallback bool) (bool, error) {
 		return false, nil
 	default:
 		return false, fmt.Errorf("invalid %s: %q must be true or false", key, v)
+	}
+}
+
+func getDeviceVerificationOff() (bool, error) {
+	switch v := os.Getenv("DEVICE_VERIFICATION"); v {
+	case "", "enforce":
+		return false, nil
+	case "off":
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid DEVICE_VERIFICATION: %q must be enforce or off", v)
 	}
 }
 

@@ -39,6 +39,8 @@ type Config struct {
 	TokenTTL  time.Duration
 	PerIP     ratelimit.Rule
 	PerSubnet ratelimit.Rule
+	// SkipVerification turns off Turnstile and attestation; rate limits still apply.
+	SkipVerification bool
 }
 
 var (

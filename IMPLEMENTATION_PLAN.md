@@ -479,8 +479,11 @@ Backend 2 before coding.
 - [ ] Ask core for: admission record per slot (latest token wins), unique index on `slot_id`, Home state from
       `q:{evt}:frontier`, and an expiring operator JWT (`amr: mfa`) instead of the static `QUEUE_ADMIN_TOKEN`.
 
-- [ ] Security tests: forged and cross-device tokens, admission token used after `exp`, replayed claims, rate limits,
-      CORS from a foreign origin.
+- [x] Security tests (12 Nov, NFR-07-Q2 #31, `test/security`, branch `test/security-suite`): the public handler from `delivery.New`
+      with production settings on Testcontainers. Forged, expired and re-purposed device tokens; queue token bound to
+      device and event (IDOR); bad core access tokens refused, never treated as a guest; replayed and late claims;
+      join and claim rate limits; CORS from foreign and look-alike origins; admin API off the public listener; no
+      detail in 401s; `no-store` on token responses. Each test was checked by breaking its guard and watching it fail.
 - [ ] k6 on the lab (`../testing-platform`): `queue-join-spike`, `frontier-poll`, `sse-front`, `claim-race`; record
       per-core throughput for AWS sizing.
 - [ ] Dashboards and alerts from the metrics list; trigger each alert once.
@@ -516,7 +519,7 @@ a drill; runbooks reviewed by Backend 2.
 | Lua | Testcontainers Valkey 8, `rapid` | every function, races, idempotency, invariants |
 | Integration | Testcontainers Valkey + PostgreSQL | controller + checkpoint + reconcile, consumer + DLQ |
 | Contract | `kin-openapi` response validation against `openapi.yaml` | every operation's status codes and bodies |
-| Security | Go tests in `test/security` | forged tokens, IDOR on places, rate limits, CORS |
+| Security | Go tests in `test/security` (Testcontainers, `delivery.New`) | forged tokens, IDOR on places, core access token, replayed claims, rate limits, CORS, admin listener |
 | Stream | `httptest` + a Go SSE load client | heartbeat, lifetime, cap, drain, slow clients |
 | Load | k6 from `../testing-platform` on another host | join spike, polling, 2,000+ streams, claim race |
 
