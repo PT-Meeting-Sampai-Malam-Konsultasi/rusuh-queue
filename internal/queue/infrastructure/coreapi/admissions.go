@@ -35,6 +35,7 @@ type admission struct {
 	UserID         string    `json:"user_id"`
 	EventID        string    `json:"event_id"`
 	SlotID         string    `json:"slot_id"`
+	DeviceID       string    `json:"device_id"`
 	MaxTickets     int       `json:"max_tickets"`
 	ExpiresAt      time.Time `json:"expires_at"`
 }
@@ -42,7 +43,7 @@ type admission struct {
 // Register is safe to repeat: core keys the record by admission token and overwrites it.
 func (a *Admissions) Register(ctx context.Context, rec dto.AdmissionRecord) error {
 	payload, err := json.Marshal(admission{
-		AdmissionToken: rec.Token, UserID: rec.UserID, EventID: rec.EventID, SlotID: rec.SlotID,
+		AdmissionToken: rec.Token, UserID: rec.UserID, EventID: rec.EventID, SlotID: rec.SlotID, DeviceID: rec.DeviceID,
 		MaxTickets: rec.ReservedUnits, ExpiresAt: rec.ExpiresAt.UTC(),
 	})
 	if err != nil {
