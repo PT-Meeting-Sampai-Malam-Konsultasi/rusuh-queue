@@ -31,7 +31,9 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 	if err != nil {
 		return fmt.Errorf("signing keys: %w", err)
 	}
-	if cfg.TurnstileSecret == "" && cfg.Env != "development" {
+	if cfg.DeviceVerificationOff {
+		slog.Warn("DEVICE_VERIFICATION=off: device registration skips Turnstile and attestation; only rate limits apply")
+	} else if cfg.TurnstileSecret == "" && cfg.Env != "development" {
 		return errors.New("TURNSTILE_SECRET is required outside development")
 	}
 	if cfg.Attestor != "sandbox" {
@@ -67,6 +69,8 @@ func (s *Server) wireDomains(cfg *config.Config, mux, adminMux *http.ServeMux, i
 			TokenTTL:  cfg.DeviceTokenTTL,
 			PerIP:     ratelimit.Rule{Scope: "dev-reg:ip", Limit: cfg.RLDevicePerIP, Window: time.Minute},
 			PerSubnet: ratelimit.Rule{Scope: "dev-reg:net", Limit: cfg.RLDevicePerSubnet, Window: time.Minute},
+
+			SkipVerification: cfg.DeviceVerificationOff,
 		},
 		Human:    turnstile.New(cfg.TurnstileSecret, cfg.TurnstileVerifyURL, cfg.TurnstileHostnames),
 		Attestor: attest.Sandbox{},

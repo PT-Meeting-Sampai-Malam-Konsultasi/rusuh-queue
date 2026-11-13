@@ -89,6 +89,27 @@ func TestNewServesAndStops(t *testing.T) {
 	s.Close()
 }
 
+func TestNewWithoutDeviceVerification(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Env = "production"
+	cfg.SigningKeys = signingKeys(t)
+	cfg.DeviceVerificationOff = true
+	cfg.CoreJWKSURL = testkit.NewIssuer(t).URL()
+	cfg.AdminJWKSURL = testkit.NewIssuer(t).URL()
+	cfg.RequestLog = false
+	s, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	w := httptest.NewRecorder()
+	s.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/queue/devices", strings.NewReader(`{"platform":"web"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("web registration without a Turnstile token = %d %s, want 201", w.Code, w.Body)
+	}
+}
+
 func TestRunLogsAFailedRoutine(t *testing.T) {
 	s := &Server{background: []func(context.Context) error{
 		func(context.Context) error { return errors.New("boom") },

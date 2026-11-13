@@ -181,3 +181,50 @@ func TestRegisterCheckErrors(t *testing.T) {
 		})
 	}
 }
+
+func newUnverifiedFixture(t *testing.T) fixture {
+	t.Helper()
+	f := newFixture(t)
+	cfg := testCfg
+	cfg.SkipVerification = true
+	f.svc = NewDevice(cfg, f.human, f.attest, f.limiter, f.keys)
+	return f
+}
+
+func TestRegisterWebWithoutVerificationSkipsTurnstile(t *testing.T) {
+	f := newUnverifiedFixture(t)
+	f.allowRate()
+
+	reg, err := f.svc.Register(context.Background(), entity.RegisterInput{Platform: entity.PlatformWeb, ClientIP: ip})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(reg.DeviceID, "w_") {
+		t.Fatalf("device id = %q", reg.DeviceID)
+	}
+}
+
+func TestRegisterMobileWithoutVerificationSkipsAttestation(t *testing.T) {
+	f := newUnverifiedFixture(t)
+	f.allowRate()
+
+	reg, err := f.svc.Register(context.Background(), entity.RegisterInput{Platform: entity.PlatformAndroid, InstallID: "install-1234567890abcdef", ClientIP: ip})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c token.DeviceClaims
+	if err := f.keys.Verify(token.KindDevice, reg.Token, token.AudienceQueue, &c); err != nil || c.Platform != "android" {
+		t.Fatalf("claims = %+v, err = %v", c, err)
+	}
+}
+
+func TestRegisterWithoutVerificationStillRateLimits(t *testing.T) {
+	f := newUnverifiedFixture(t)
+	f.limiter.EXPECT().Hit(gomock.Any(), testCfg.PerIP, "203.0.113.7").Return(ratelimit.Result{Allowed: false, RetryAfter: time.Second}, nil)
+
+	_, err := f.svc.Register(context.Background(), entity.RegisterInput{Platform: entity.PlatformWeb, ClientIP: ip})
+	var rl *entity.RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err = %v, want rate limited", err)
+	}
+}

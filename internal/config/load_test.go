@@ -128,3 +128,28 @@ func TestLoadRejectsInvalidValkeyTLSEnabled(t *testing.T) {
 		t.Errorf("Load() error = %q, want variable name", err)
 	}
 }
+
+func TestLoadDeviceVerification(t *testing.T) {
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DeviceVerificationOff {
+		t.Fatal("device verification must default to enforce")
+	}
+	t.Setenv("DEVICE_VERIFICATION", "off")
+	if c, err = Load(); err != nil || !c.DeviceVerificationOff {
+		t.Fatalf("off: config = %+v, err = %v", c, err)
+	}
+	t.Setenv("DEVICE_VERIFICATION", "enforce")
+	if c, err = Load(); err != nil || c.DeviceVerificationOff {
+		t.Fatalf("enforce: config = %+v, err = %v", c, err)
+	}
+}
+
+func TestLoadRejectsInvalidDeviceVerification(t *testing.T) {
+	t.Setenv("DEVICE_VERIFICATION", "false")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "DEVICE_VERIFICATION") {
+		t.Fatalf("err = %v, want DEVICE_VERIFICATION error", err)
+	}
+}
