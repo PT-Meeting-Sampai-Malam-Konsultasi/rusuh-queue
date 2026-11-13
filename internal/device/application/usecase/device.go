@@ -26,7 +26,7 @@ var installIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
 // Register runs: validate → rate limit (before calling Cloudflare) → human or
 // app check → mint a device id → sign the device token.
 func (s *DeviceUsecase) Register(ctx context.Context, in entity.RegisterInput) (*entity.Registration, error) {
-	if err := validate(in); err != nil {
+	if err := validate(in, s.cfg.SkipVerification); err != nil {
 		return nil, err
 	}
 	if err := s.checkRate(ctx, in); err != nil {
@@ -57,7 +57,7 @@ func (s *DeviceUsecase) Register(ctx context.Context, in entity.RegisterInput) (
 
 func (s *DeviceUsecase) JWKS() token.JWKS { return s.signer.JWKS() }
 
-func validate(in entity.RegisterInput) error {
+func validate(in entity.RegisterInput, skipVerification bool) error {
 	switch in.Platform {
 	case entity.PlatformWeb:
 		return nil // the Turnstile token is checked by checkCaller
@@ -65,7 +65,7 @@ func validate(in entity.RegisterInput) error {
 		if !installIDPattern.MatchString(in.InstallID) {
 			return fmt.Errorf("%w: installId must be 16-128 characters of [A-Za-z0-9_-]", entity.ErrInvalidInput)
 		}
-		if in.Attestation == "" {
+		if in.Attestation == "" && !skipVerification {
 			return fmt.Errorf("%w: attestation is required on mobile", entity.ErrInvalidInput)
 		}
 		return nil
@@ -100,6 +100,9 @@ func (s *DeviceUsecase) checkRate(ctx context.Context, in entity.RegisterInput) 
 }
 
 func (s *DeviceUsecase) checkCaller(ctx context.Context, in entity.RegisterInput) error {
+	if s.cfg.SkipVerification {
+		return nil
+	}
 	var err error
 	if in.Platform == entity.PlatformWeb {
 		err = s.human.Verify(ctx, in.TurnstileToken, in.ClientIP)

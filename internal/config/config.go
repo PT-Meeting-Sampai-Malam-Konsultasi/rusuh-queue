@@ -26,6 +26,8 @@ type Config struct {
 	TurnstileVerifyURL string
 	TurnstileHostnames []string
 	Attestor           string // "sandbox" until real Play Integrity / App Attest (D-6)
+	// DeviceVerificationOff (DEVICE_VERIFICATION=off) skips Turnstile and attestation at device registration.
+	DeviceVerificationOff bool
 
 	// ClientIPHeader is trusted only from TrustedProxyCIDRs (lab: CF-Connecting-IP + Cloudflare ranges).
 	ClientIPHeader    string
